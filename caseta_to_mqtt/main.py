@@ -161,20 +161,21 @@ async def button_watcher_loop(button_history: ButtonHistory) -> None:
 
 
 class ButtonTracker:
-    def __init__(self) -> None:
+    def __init__(self, shutdown_latch: asyncio.Condition):
         self.mutex = Lock()
+        self.shutdown_latch: asyncio.Condition = shutdown_latch
         self.button_histories_by_remote_id: dict[str, ButtonHistory] = dict()
 
     def button_event_callback(
         self, remote_id: str, button_id: ButtonId
     ) -> Callable[[str], None]:
         return lambda button_event_str: asyncio.get_running_loop().create_task(
-            self.process_button_event(
+            self._process_button_event(
                 remote_id, button_id, ButtonAction.of_str(button_event_str)
             )
         )
 
-    async def process_button_event(
+    async def _process_button_event(
         self, remote_id: str, button_id: ButtonId, button_action: ButtonAction
     ):
         LOGGER.info(
@@ -189,22 +190,35 @@ class ButtonTracker:
                 or button_history.is_finished
                 or button_history.is_timed_out
             ):
-                loop = asyncio.get_running_loop()
                 button_history = ButtonHistory(remote_id, button_id)
                 await button_history.increment(button_action)
-                loop.create_task(button_watcher_loop(button_history))
+                asyncio.ensure_future(
+                    self._notify_if_exception(button_watcher_loop(button_history))
+                )
             else:
                 await button_history.increment(button_action)
             self.button_histories_by_remote_id[remote_id] = button_history
 
+    async def _notify_if_exception(self, future: asyncio.Future):
+        try:
+            await future
+        except Exception as e:
+            LOGGER.error(
+                f"encountered an exception: {e}. starting to shutdown.", exc_info=True
+            )
+            async with self.shutdown_latch:
+                self.shutdown_latch.notify()
+
 
 async def main_loop():
+    shutdown_latch = asyncio.Condition()
+
     bridge = Smartbridge.create_tls(
         CASETA_BRIDGE_HOSTNAME, PATH_TO_KEY_FILE, PATH_TO_CERT_FILE, PATH_TO_CA_FILE
     )
 
     await bridge.connect()
-    button_tracker = ButtonTracker()
+    button_tracker = ButtonTracker(shutdown_latch)
 
     all_buttons = bridge.get_buttons()
     buttons_by_remote_id = {
@@ -225,8 +239,13 @@ async def main_loop():
             for button in buttons
         ]
 
+    async with shutdown_latch:
+        await shutdown_latch.wait()
+        LOGGER.info("received shutdown signal. shutting down")
+        await bridge.close()
+
 
 if __name__ == "__main__":
     loop = asyncio.new_event_loop()
-    loop.create_task(main_loop())
-    loop.run_forever()
+    main_task = loop.create_task(main_loop())
+    loop.run_until_complete(main_task)
