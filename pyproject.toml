@@ -8,7 +8,8 @@ packages = [{include = "caseta_to_mqtt"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-pylutron-caseta = "^0.18.1"
+pylutron-caseta = {extras = ["cli"], version = "^0.18.1"}
+aiomqtt = "^1.0.0"
 
 
 [tool.poetry.group.dev.dependencies]

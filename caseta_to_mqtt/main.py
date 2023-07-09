@@ -1,12 +1,18 @@
+from __future__ import annotations
+
 import asyncio
 from asyncio.locks import Lock
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
 import itertools
+import json
 import logging
 import os
+import ssl
 import sys
 from typing import Callable, Optional
+import aiomqtt
 from pylutron_caseta.smartbridge import Smartbridge
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
@@ -14,10 +20,21 @@ LOGGER = logging.getLogger(__name__)
 LOGGER.setLevel(LOGLEVEL)
 LOGGER.addHandler(logging.StreamHandler(stream=sys.stderr))
 
-PATH_TO_CERT_FILE: str = "/Users/dan/.config/pylutron_caseta/caseta.run.crt"
-PATH_TO_KEY_FILE: str = "/Users/dan/.config/pylutron_caseta/caseta.run.key"
-PATH_TO_CA_FILE: str = "/Users/dan/.config/pylutron_caseta/caseta.run-bridge.crt"
+PATH_TO_CERT_FILE: str = os.environ.get("PATH_TO_LUTRON_CLIENT_CERT")
+PATH_TO_KEY_FILE: str = os.environ.get("PATH_TO_LUTRON_CLIENT_KEY")
+PATH_TO_CA_FILE: str = os.environ.get("PATH_TO_LUTRON_CA_CERT")
+
+PATH_TO_PIHOME_CERT_FILE: str = os.environ.get("PATH_TO_MQTT_CLIENT_CERT")
+PATH_TO_PIHOME_KEY_FILE: str = os.environ.get("PATH_TO_MQTT_CLIENT_KEY")
+PATH_TO_PIHOME_CA_FILE: str = os.environ.get("PATH_TO_MQTT_CA")
+
+MQTT_HOST: str = os.environ.get("MQTT_HOST")
+MQTT_PORT: int = int(os.environ.get("MQTT_PORT"))
+MQTT_USERNAME: str = os.environ.get("MQTT_USERNAME")
+MQTT_PASSWORD: str = os.environ.get("MQTT_PASSWORD")
+
 CASETA_BRIDGE_HOSTNAME = "caseta.run"
+
 
 DOUBLE_CLICK_WINDOW = timedelta(milliseconds=500)
 BUTTON_WATCHER_SLEEP_DURATION = timedelta(milliseconds=250)
@@ -193,21 +210,117 @@ class ButtonTracker:
                 button_history = ButtonHistory(remote_id, button_id)
                 await button_history.increment(button_action)
                 asyncio.ensure_future(
-                    self._notify_if_exception(button_watcher_loop(button_history))
+                    notify_if_exception(
+                        button_watcher_loop(button_history), self.shutdown_latch
+                    )
                 )
             else:
                 await button_history.increment(button_action)
             self.button_histories_by_remote_id[remote_id] = button_history
 
-    async def _notify_if_exception(self, future: asyncio.Future):
-        try:
-            await future
-        except Exception as e:
-            LOGGER.error(
-                f"encountered an exception: {e}. starting to shutdown.", exc_info=True
-            )
-            async with self.shutdown_latch:
-                self.shutdown_latch.notify()
+
+async def notify_if_exception(
+    future: asyncio.Future, shutdown_latch: asyncio.Condition
+):
+    try:
+        return await future
+    except Exception as e:
+        LOGGER.error(
+            f"encountered an exception: {e}. starting to shutdown.", exc_info=True
+        )
+        async with shutdown_latch:
+            shutdown_latch.notify()
+
+
+class Zigbee2mqttSubscriber:
+    def __init__(self, mqtt_client: aiomqtt.Client, shutdown_latch: asyncio.Condition):
+        self._mqtt_client = mqtt_client
+        self._shutdown_latch = shutdown_latch
+        self._all_groups: set[Zigbee2MqttGroup] = set()
+
+    def get_state(self) -> map[str, Zigbee2MqttGroup]:
+        return {group.friendly_name: group for group in self._all_groups}
+
+    async def subscribe_to_zigbee2mqtt_messages(self):
+        async with self._mqtt_client as client:
+            async with client.messages() as messages:
+                # listen for new groups
+                await client.subscribe("zigbee2mqtt/bridge/groups")
+                # I think this is handling messages one-at-a-time, so we won't have any concurrent messages creating
+                # race conditions (i.e. since we're only processing messages one at a time, we don't need to do any locking
+                # on the set of groups, the state of groups/scenes/brightnesses/etc)
+                async for message in messages:
+                    if message.topic.matches("zigbee2mqtt/bridge/groups"):
+                        groups_response = (
+                            json.loads(message.payload) if message.payload else []
+                        )
+                        print(f"got message for topic: {message.topic}")
+                        for group in groups_response:
+                            scenes = [
+                                Zigbee2MqttScene(scene["id"], scene["name"])
+                                for scene in group["scenes"]
+                            ]
+                            new_group = Zigbee2MqttGroup(
+                                group["id"], group["friendly_name"], scenes
+                            )
+                            self._all_groups.add(new_group)
+                            await client.subscribe(new_group.topic)
+                    elif any(
+                        message.topic.matches(group.topic) for group in self._all_groups
+                    ):
+                        deserialized_group_response = (
+                            json.loads(message.payload) if message.payload else {}
+                        )
+                        print(f"got message for topic: {message.topic}")
+
+
+@dataclass(frozen=True)
+class Zigbee2MqttScene:
+    id: int
+    friendly_name: str
+
+
+@dataclass(frozen=True)
+class Zigbee2MqttGroup:
+    id: int
+    friendly_name: str
+    scenes: list[Zigbee2MqttScene]
+
+    @property
+    def topic(self) -> str:
+        return f"zigbee2mqtt/{self.friendly_name}"
+
+    def __key(self) -> tuple:
+        (
+            self.id,
+            self.friendly_name,
+            tuple(f"{scene.id}-{scene.friendly_name}" for scene in self.scenes),
+        )
+
+    def __hash__(self) -> int:
+        return hash(self.__key())
+
+
+class Zigbee2mqttPublisher:
+    def __init__(self, mqtt_client: aiomqtt.Client) -> Zigbee2mqttPublisher:
+        self._mqtt_client = mqtt_client
+
+    async def turn_on_group(self, group: Zigbee2MqttGroup):
+        async with self._mqtt_client as client:
+            await client.publish(group.topic, json.dumps({"on": True}))
+
+    async def turn_off_group(self, group: Zigbee2MqttGroup):
+        async with self._mqtt_client as client:
+            await client.publish(group.topic, json.dumps({"on": False}))
+
+    async def publish_loop(self):
+        while True:
+            LOGGER.info("sleeping, then turning on")
+            await asyncio.sleep(2)
+            # await self.turn_on_group(group)
+            LOGGER.info("sleeping, then turning off")
+            await asyncio.sleep(2)
+            # await self.turn_off_group(group)
 
 
 async def main_loop():
@@ -238,6 +351,27 @@ async def main_loop():
             )
             for button in buttons
         ]
+    async with asyncio.TaskGroup() as task_group:
+        mqtt_client = aiomqtt.Client(
+            MQTT_HOST,
+            MQTT_PORT,
+            username=MQTT_USERNAME,
+            password=MQTT_PASSWORD,
+            tls_params=aiomqtt.TLSParameters(
+                ca_certs=PATH_TO_PIHOME_CA_FILE,
+                certfile=PATH_TO_PIHOME_CERT_FILE,
+                keyfile=PATH_TO_PIHOME_KEY_FILE,
+                cert_reqs=ssl.CERT_REQUIRED,
+                tls_version=ssl.PROTOCOL_TLS,
+            ),
+        )
+        task_group.create_task(
+            Zigbee2mqttSubscriber(
+                mqtt_client, shutdown_latch
+            ).subscribe_to_zigbee2mqtt_messages()
+        )
+        publisher = Zigbee2mqttPublisher(mqtt_client)
+        task_group.create_task(publisher.publish_loop())
 
     async with shutdown_latch:
         await shutdown_latch.wait()
@@ -246,6 +380,4 @@ async def main_loop():
 
 
 if __name__ == "__main__":
-    loop = asyncio.new_event_loop()
-    main_task = loop.create_task(main_loop())
-    loop.run_until_complete(main_task)
+    asyncio.run(main_loop())
