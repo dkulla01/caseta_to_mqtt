@@ -14,13 +14,13 @@ from caseta_to_mqtt.caseta.topology import BridgeConfiguration, Topology
 from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
 from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttSubscriber
 
-LOGGER = logging.getLogger(__name__)
 _LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
-LOGGER.setLevel(_LOGLEVEL)
 _HANDLER = logging.StreamHandler(stream=sys.stderr)
+_HANDLER.setLevel(_LOGLEVEL)
 _FORMATTER = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s")
 _HANDLER.setFormatter(_FORMATTER)
-LOGGER.addHandler(_HANDLER)
+logging.basicConfig(level=_LOGLEVEL, handlers=[_HANDLER])
+LOGGER = logging.getLogger(__name__)
 
 PATH_TO_CERT_FILE: str = os.environ.get("PATH_TO_LUTRON_CLIENT_CERT")
 PATH_TO_KEY_FILE: str = os.environ.get("PATH_TO_LUTRON_CLIENT_KEY")
@@ -73,7 +73,7 @@ async def main_loop():
                 mqtt_client, shutdown_latch_wrapper
             ).subscribe_to_zigbee2mqtt_messages()
         )
-        publisher = Zigbee2mqttPublisher(mqtt_client)
+        publisher = Zigbee2mqttPublisher(mqtt_client, shutdown_latch_wrapper)
         task_group.create_task(publisher.publish_loop())
         LOGGER.info("done connecting to mqtt broker")
         await shutdown_latch_wrapper.wait()

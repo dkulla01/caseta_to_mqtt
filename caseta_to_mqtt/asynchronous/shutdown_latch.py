@@ -1,4 +1,4 @@
-from asyncio import Condition, Future
+from asyncio import Condition
 import logging
 from typing import Awaitable
 
@@ -20,5 +20,5 @@ class ShutdownLatchWrapper:
                 self._shutdown_latch.notify()
 
     async def wait(self):
-        async with self._shutdown_latch as shutdown_latch:
-            shutdown_latch.wait()
+        async with self._shutdown_latch:
+            await self._shutdown_latch.wait()
