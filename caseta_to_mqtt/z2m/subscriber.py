@@ -16,7 +16,7 @@ class Zigbee2mqttSubscriber:
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._all_groups: set[Zigbee2MqttGroup] = set()
 
-    def get_state(self) -> map[str, Zigbee2MqttGroup]:
+    def get_state(self) -> dict[str, Zigbee2MqttGroup]:
         return {group.friendly_name: group for group in self._all_groups}
 
     async def subscribe_to_zigbee2mqtt_messages(self):

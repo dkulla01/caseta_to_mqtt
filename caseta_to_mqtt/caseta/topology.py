@@ -25,7 +25,7 @@ def default_bridge(bridge_configuration: BridgeConfiguration) -> Smartbridge:
         bridge_configuration.caseta_bridge_hostname,
         bridge_configuration.caseta_key_file,
         bridge_configuration.caseta_cert_file,
-        bridge_configuration.caseta_cert_file,
+        bridge_configuration.caseta_ca_file,
     )
 
 
@@ -48,9 +48,8 @@ class Topology:
             return
 
         LOGGER.info("connecting to caseta bridge")
-        await ShutdownLatchWrapper.wrap_with_shutdown_latch(
-            self._caseta_bridge.connect()
-        )
+        connection_future = self._caseta_bridge.connect()
+        await self._shutdown_latch_wrapper.wrap_with_shutdown_latch(connection_future)
         self._is_initialized = True
         all_buttons = self._caseta_bridge.get_buttons()
         self._buttons_by_remote_id = {

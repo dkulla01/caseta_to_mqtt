@@ -1,5 +1,6 @@
 from asyncio import Condition, Future
 import logging
+from typing import Awaitable
 
 LOGGER = logging.getLogger(__name__)
 
@@ -8,7 +9,7 @@ class ShutdownLatchWrapper:
     def __init__(self):
         self._shutdown_latch = Condition()
 
-    async def wrap_with_shutdown_latch(self, future: Future) -> Future:
+    async def wrap_with_shutdown_latch(self, future: Awaitable) -> Awaitable:
         try:
             return await future
         except Exception as e:
@@ -17,3 +18,7 @@ class ShutdownLatchWrapper:
             )
             async with self._shutdown_latch:
                 self._shutdown_latch.notify()
+
+    async def wait(self):
+        async with self._shutdown_latch as shutdown_latch:
+            shutdown_latch.wait()

@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import os
 import ssl
 import sys
 import aiomqtt
-from pylutron_caseta.smartbridge import Smartbridge
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 from caseta_to_mqtt.caseta import topology
 from caseta_to_mqtt.caseta.button_watcher import ButtonTracker
 
 from caseta_to_mqtt.caseta.topology import BridgeConfiguration, Topology
+from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
+from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttSubscriber
 
 LOGGER = logging.getLogger(__name__)
 _LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
@@ -48,9 +48,12 @@ async def main_loop():
     )
 
     smartbridge = topology.default_bridge(bridge_configuration)
-    caseta_topology = Topology(smartbridge, button_tracker, ShutdownLatchWrapper)
+    caseta_topology = Topology(smartbridge, button_tracker, shutdown_latch_wrapper)
+    LOGGER.info("connecting to caseta bridge")
     await caseta_topology.connect()
+    LOGGER.info("done connecting to caseta bridge")
 
+    LOGGER.info("connecting to mqtt broker")
     async with asyncio.TaskGroup() as task_group:
         mqtt_client = aiomqtt.Client(
             MQTT_HOST,
@@ -67,16 +70,15 @@ async def main_loop():
         )
         task_group.create_task(
             Zigbee2mqttSubscriber(
-                mqtt_client, shutdown_latch
+                mqtt_client, shutdown_latch_wrapper
             ).subscribe_to_zigbee2mqtt_messages()
         )
         publisher = Zigbee2mqttPublisher(mqtt_client)
         task_group.create_task(publisher.publish_loop())
-
-    async with shutdown_latch:
-        await shutdown_latch.wait()
+        LOGGER.info("done connecting to mqtt broker")
+        await shutdown_latch_wrapper.wait()
         LOGGER.info("received shutdown signal. shutting down")
-        await bridge.close()
+        await smartbridge.close()
 
 
 if __name__ == "__main__":
