@@ -1,18 +1,19 @@
-
 from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
 
 
 @dataclass(frozen=True)
-class Zigbee2MqttScene:
+class Zigbee2mqttScene:
     id: int
     friendly_name: str
 
 
 @dataclass(frozen=True)
-class Zigbee2MqttGroup:
+class Zigbee2mqttGroup:
     id: int
     friendly_name: str
-    scenes: list[Zigbee2MqttScene]
+    scenes: list[Zigbee2mqttScene]
 
     @property
     def topic(self) -> str:
@@ -27,3 +28,16 @@ class Zigbee2MqttGroup:
 
     def __hash__(self) -> int:
         return hash(self.__key())
+
+
+class OnOrOff(Enum):
+    OFF = 0
+    ON = 1
+
+
+@dataclass(frozen=True)
+class GroupState:
+    brightness: int
+    state: OnOrOff
+    scene: Zigbee2mqttScene
+    updated_at: datetime

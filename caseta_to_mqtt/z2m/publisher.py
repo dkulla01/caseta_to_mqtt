@@ -6,7 +6,7 @@ import logging
 import aiomqtt
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 
-from caseta_to_mqtt.z2m.model import Zigbee2MqttGroup
+from caseta_to_mqtt.z2m.model import Zigbee2mqttGroup
 
 
 LOGGER = logging.getLogger(__name__)
@@ -19,11 +19,11 @@ class Zigbee2mqttPublisher:
         self._mqtt_client = mqtt_client
         self._shutdown_latch_wrapper = shutdown_latch_wrapper
 
-    async def turn_on_group(self, group: Zigbee2MqttGroup):
+    async def turn_on_group(self, group: Zigbee2mqttGroup):
         async with self._mqtt_client as client:
             await client.publish(group.topic, json.dumps({"on": True}))
 
-    async def turn_off_group(self, group: Zigbee2MqttGroup):
+    async def turn_off_group(self, group: Zigbee2mqttGroup):
         async with self._mqtt_client as client:
             await client.publish(group.topic, json.dumps({"on": False}))
 

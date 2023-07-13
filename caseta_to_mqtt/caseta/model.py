@@ -1,7 +1,9 @@
+from __future__ import annotations
 from asyncio import Lock
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import ClassVar, Optional
 
 from caseta_to_mqtt.caseta import BUTTON_WATCHER_MAX_DURATION
 
@@ -12,7 +14,28 @@ class IllegalStateTransitionError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class PicoRemote:
+    device_id: int
+    name: str
+    buttons_by_button_id: dict[int, ButtonId]
+
+
+@dataclass(frozen=True)
+class PicoTwoButton(PicoRemote):
+    TYPE: ClassVar[str] = "Pico2Button"
+
+
+@dataclass(frozen=True)
+class PicoThreeButtonRaiseLower(PicoRemote):
+    TYPE: ClassVar[str] = "Pico3ButtonRaiseLower"
+
+
 class ButtonId(Enum):
+    """
+    these button numbers are consistent for both Pico3ButtonRaiseLower and Pico2Button remotes
+    """
+
     POWER_ON = 0
     FAVORITE = 1
     POWER_OFF = 2

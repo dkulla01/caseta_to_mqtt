@@ -3,7 +3,7 @@ import logging
 import aiomqtt
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
-from caseta_to_mqtt.z2m.model import Zigbee2MqttGroup, Zigbee2MqttScene
+from caseta_to_mqtt.z2m.model import Zigbee2mqttGroup, Zigbee2mqttScene
 
 LOGGER = logging.getLogger(__name__)
 
@@ -14,9 +14,9 @@ class Zigbee2mqttSubscriber:
     ):
         self._mqtt_client: aiomqtt.Client = mqtt_client
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
-        self._all_groups: set[Zigbee2MqttGroup] = set()
+        self._all_groups: set[Zigbee2mqttGroup] = set()
 
-    def get_state(self) -> dict[str, Zigbee2MqttGroup]:
+    def get_state(self) -> dict[str, Zigbee2mqttGroup]:
         return {group.friendly_name: group for group in self._all_groups}
 
     async def subscribe_to_zigbee2mqtt_messages(self):
@@ -35,10 +35,10 @@ class Zigbee2mqttSubscriber:
                         LOGGER.debug(f"got message for topic: {message.topic}")
                         for group in groups_response:
                             scenes = [
-                                Zigbee2MqttScene(scene["id"], scene["name"])
+                                Zigbee2mqttScene(scene["id"], scene["name"])
                                 for scene in group["scenes"]
                             ]
-                            new_group = Zigbee2MqttGroup(
+                            new_group = Zigbee2mqttGroup(
                                 group["id"], group["friendly_name"], scenes
                             )
                             self._all_groups.add(new_group)
