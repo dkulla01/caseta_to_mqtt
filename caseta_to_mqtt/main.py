@@ -6,6 +6,7 @@ import os
 import ssl
 import sys
 import aiomqtt
+from config import settings
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 from caseta_to_mqtt.caseta import topology
 from caseta_to_mqtt.caseta.button_watcher import ButtonTracker
@@ -39,6 +40,7 @@ CASETA_BRIDGE_HOSTNAME = "caseta.run"
 
 
 async def main_loop():
+    s = settings
     shutdown_latch_wrapper = ShutdownLatchWrapper()
 
     button_tracker = ButtonTracker(shutdown_latch_wrapper)
@@ -68,14 +70,13 @@ async def main_loop():
                 tls_version=ssl.PROTOCOL_TLS,
             ),
         )
-        task_group.create_task(
-            Zigbee2mqttSubscriber(
-                mqtt_client, shutdown_latch_wrapper
-            ).subscribe_to_zigbee2mqtt_messages()
-        )
+        subscriber = Zigbee2mqttSubscriber(mqtt_client, shutdown_latch_wrapper)
+        task_group.create_task(subscriber.subscribe_to_zigbee2mqtt_messages())
         publisher = Zigbee2mqttPublisher(mqtt_client, shutdown_latch_wrapper)
         task_group.create_task(publisher.publish_loop())
         LOGGER.info("done connecting to mqtt broker")
+        # topology.load_callbacks(publisher, subscriber)
+        LOGGER.info
         await shutdown_latch_wrapper.wait()
         LOGGER.info("received shutdown signal. shutting down")
         await smartbridge.close()

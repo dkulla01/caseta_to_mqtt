@@ -1,8 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import itertools
 import logging
-from typing import Union
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 from pylutron_caseta.smartbridge import Smartbridge
@@ -14,6 +12,8 @@ from caseta_to_mqtt.caseta.model import (
     PicoThreeButtonRaiseLower,
     PicoTwoButton,
 )
+from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
+from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttSubscriber
 
 LOGGER = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class Topology:
         all_devices = self._caseta_bridge.get_devices()
         for device_id, device in all_devices.items():
             # some devices don't have any remotes (e.g. the bridge itself). skip them
-            if device_id not in self._buttons_by_remote_id.keys():
+            if device_id not in self._remotes_by_id.keys():
                 continue
 
             remote_buttons = all_buttons[device["device_id"]]
@@ -85,6 +85,11 @@ class Topology:
         if not self._is_initialized:
             raise AssertionError("Topology has not been initialized yet")
         return self._remotes_by_id
+
+    def load_callbacks(
+        self, subscriber: Zigbee2mqttSubscriber, publisher: Zigbee2mqttPublisher
+    ):
+        pass
 
     def _load_topology_callbacks(self):
         for remote_id, buttons in self._buttons_by_remote_id.items():

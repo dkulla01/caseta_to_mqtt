@@ -24,9 +24,6 @@ class Zigbee2mqttSubscriber:
             async with client.messages() as messages:
                 # listen for new groups
                 await client.subscribe("zigbee2mqtt/bridge/groups")
-                # I think this is handling messages one-at-a-time, so we won't have any concurrent messages creating
-                # race conditions (i.e. since we're only processing messages one at a time, we don't need to do any locking
-                # on the set of groups, the state of groups/scenes/brightnesses/etc)
                 async for message in messages:
                     if message.topic.matches("zigbee2mqtt/bridge/groups"):
                         groups_response = (
