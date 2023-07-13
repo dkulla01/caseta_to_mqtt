@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+import itertools
 import logging
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
@@ -59,12 +60,20 @@ class Topology:
         self._is_initialized = True
         all_buttons = self._caseta_bridge.get_buttons()
         all_devices = self._caseta_bridge.get_devices()
+        buttons_by_remote_id = {
+            remote_id: list(buttons)
+            for remote_id, buttons in itertools.groupby(
+                [button for button in all_buttons.values()],
+                lambda b: b["parent_device"],
+            )
+        }
+
         for device_id, device in all_devices.items():
-            # some devices don't have any remotes (e.g. the bridge itself). skip them
-            if device_id not in self._remotes_by_id.keys():
+            # some devices are not remotes, so skip them
+            if device_id not in buttons_by_remote_id.keys():
                 continue
 
-            remote_buttons = all_buttons[device["device_id"]]
+            remote_buttons = buttons_by_remote_id[device["device_id"]]
             buttons_by_id = {
                 button["device_id"]: ButtonId.of_int(button["button_number"])
                 for button in remote_buttons
@@ -78,6 +87,12 @@ class Topology:
                 self._remotes_by_id[device_id] = PicoTwoButton(
                     int(device_id), device["name"], buttons_by_id
                 )
+            else:
+                LOGGER.debug(
+                    "device: %s: device type `%s` is not a supported pico remote and will be skipped",
+                    device["name"],
+                    device["type"],
+                )
         LOGGER.info("done connecting to caseta bridge")
 
     @property
@@ -88,6 +103,36 @@ class Topology:
 
     def load_callbacks(
         self, subscriber: Zigbee2mqttSubscriber, publisher: Zigbee2mqttPublisher
+    ):
+        for remote in self.remotes_by_id.values():
+            if isinstance(remote, PicoThreeButtonRaiseLower):
+                self._load_three_button_raise_lower_callback(
+                    remote, subscriber, publisher
+                )
+            elif isinstance(remote, PicoTwoButton):
+                self._load_two_button_callback(remote, subscriber, publisher)
+            else:
+                raise AssertionError(f"unable to load callbacks for device {remote}")
+
+    def _load_three_button_raise_lower_callback(
+        self,
+        remote: PicoThreeButtonRaiseLower,
+        subscriber: Zigbee2mqttSubscriber,
+        publisher: Zigbee2mqttPublisher,
+    ):
+        for button_id, button in remote.buttons_by_button_id.items():
+            self._caseta_bridge.add_button_subscriber(
+                str(button_id),
+                self._button_tracker.button_event_callback(
+                    str(remote.device_id), button
+                ),
+            )
+
+    def _load_two_button_callback(
+        self,
+        remote: PicoTwoButton,
+        subscriber: Zigbee2mqttSubscriber,
+        publisher: Zigbee2mqttPublisher,
     ):
         pass
 

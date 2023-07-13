@@ -100,7 +100,7 @@ class ButtonTracker:
                 await button_history.increment(button_action)
                 asyncio.ensure_future(
                     self.shutdown_latch_wrapper.wrap_with_shutdown_latch(
-                        button_watcher_loop(button_history), self.shutdown_latch
+                        button_watcher_loop(button_history)
                     )
                 )
             else:

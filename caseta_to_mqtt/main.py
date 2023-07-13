@@ -73,9 +73,9 @@ async def main_loop():
         subscriber = Zigbee2mqttSubscriber(mqtt_client, shutdown_latch_wrapper)
         task_group.create_task(subscriber.subscribe_to_zigbee2mqtt_messages())
         publisher = Zigbee2mqttPublisher(mqtt_client, shutdown_latch_wrapper)
-        task_group.create_task(publisher.publish_loop())
+        # task_group.create_task(publisher.publish_loop())
         LOGGER.info("done connecting to mqtt broker")
-        # topology.load_callbacks(publisher, subscriber)
+        caseta_topology.load_callbacks(publisher, subscriber)
         LOGGER.info
         await shutdown_latch_wrapper.wait()
         LOGGER.info("received shutdown signal. shutting down")
