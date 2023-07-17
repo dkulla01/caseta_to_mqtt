@@ -3,16 +3,22 @@ import logging
 import aiomqtt
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
-from caseta_to_mqtt.z2m.model import Zigbee2mqttGroup, Zigbee2mqttScene
+from caseta_to_mqtt.z2m.model import GroupState, Zigbee2mqttGroup, Zigbee2mqttScene
+from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
+from caseta_to_mqtt.z2m.state import StateManager
 
 LOGGER = logging.getLogger(__name__)
 
 
 class Zigbee2mqttSubscriber:
     def __init__(
-        self, mqtt_client: aiomqtt.Client, shutdown_latch_wrapper: ShutdownLatchWrapper
+        self,
+        mqtt_client: aiomqtt.Client,
+        state_manager: StateManager,
+        shutdown_latch_wrapper: ShutdownLatchWrapper,
     ):
         self._mqtt_client: aiomqtt.Client = mqtt_client
+        self._state_manager = state_manager
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._all_groups: set[Zigbee2mqttGroup] = set()
 
@@ -40,10 +46,14 @@ class Zigbee2mqttSubscriber:
                             )
                             self._all_groups.add(new_group)
                             await client.subscribe(new_group.topic)
+                            await client.publish(
+                                f"{new_group.topic}/get", json.dumps({"state": {}})
+                            )
                     elif any(
                         message.topic.matches(group.topic) for group in self._all_groups
                     ):
                         deserialized_group_response = (
                             json.loads(message.payload) if message.payload else {}
                         )
+                        # group_state = GroupState()
                         LOGGER.debug(f"got message for topic: {message.topic}")

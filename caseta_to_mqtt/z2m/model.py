@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -30,14 +33,21 @@ class Zigbee2mqttGroup:
         return hash(self.__key())
 
 
-class OnOrOff(Enum):
-    OFF = 0
-    ON = 1
+class OnOrOff(StrEnum):
+    OFF = "off"
+    ON = "on"
+
+    def as_str(self):
+        return self.value
+
+    @classmethod
+    def from_str(cls, str_literal) -> OnOrOff:
+        return cls[str_literal.upper()]
 
 
 @dataclass(frozen=True)
 class GroupState:
-    brightness: int
+    brightness: Optional[int]
     state: OnOrOff
-    scene: Zigbee2mqttScene
-    updated_at: datetime
+    scene: Optional[Zigbee2mqttScene]
+    updated_at: Optional[datetime]
