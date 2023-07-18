@@ -22,6 +22,10 @@ class Zigbee2mqttGroup:
     def topic(self) -> str:
         return f"zigbee2mqtt/{self.friendly_name}"
 
+    @staticmethod
+    def friendly_name_from_topic_name(topic_name: str):
+        return topic_name.removeprefix("zigbee2mqtt/")
+
     def __key(self) -> tuple:
         (
             self.id,
@@ -50,4 +54,4 @@ class GroupState:
     brightness: Optional[int]
     state: OnOrOff
     scene: Optional[Zigbee2mqttScene]
-    updated_at: Optional[datetime]
+    updated_at: datetime

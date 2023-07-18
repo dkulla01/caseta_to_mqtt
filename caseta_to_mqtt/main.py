@@ -57,7 +57,7 @@ async def main_loop():
 
     LOGGER.info("connecting to mqtt broker")
     async with asyncio.TaskGroup() as task_group:
-        mqtt_client = aiomqtt.Client(
+        async with aiomqtt.Client(
             MQTT_HOST,
             MQTT_PORT,
             username=MQTT_USERNAME,
@@ -69,19 +69,19 @@ async def main_loop():
                 cert_reqs=ssl.CERT_REQUIRED,
                 tls_version=ssl.PROTOCOL_TLS,
             ),
-        )
-        publisher = Zigbee2mqttPublisher(mqtt_client, shutdown_latch_wrapper)
-        subscriber = Zigbee2mqttSubscriber(
-            mqtt_client, state_manager, shutdown_latch_wrapper
-        )
-        task_group.create_task(subscriber.subscribe_to_zigbee2mqtt_messages())
-        # task_group.create_task(publisher.publish_loop())
-        LOGGER.info("done connecting to mqtt broker")
-        caseta_topology.load_callbacks(publisher, subscriber)
-        LOGGER.info
-        await shutdown_latch_wrapper.wait()
-        LOGGER.info("received shutdown signal. shutting down")
-        await smartbridge.close()
+        ) as mqtt_client:
+            publisher = Zigbee2mqttPublisher(mqtt_client, shutdown_latch_wrapper)
+            subscriber = Zigbee2mqttSubscriber(
+                mqtt_client, state_manager, shutdown_latch_wrapper
+            )
+            task_group.create_task(subscriber.subscribe_to_zigbee2mqtt_messages())
+            # task_group.create_task(publisher.publish_loop())
+            LOGGER.info("done connecting to mqtt broker")
+            caseta_topology.load_callbacks(publisher, subscriber)
+            LOGGER.info
+            await shutdown_latch_wrapper.wait()
+            LOGGER.info("received shutdown signal. shutting down")
+            await smartbridge.close()
 
 
 if __name__ == "__main__":
