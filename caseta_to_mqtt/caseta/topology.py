@@ -13,8 +13,6 @@ from caseta_to_mqtt.caseta.model import (
     PicoThreeButtonRaiseLower,
     PicoTwoButton,
 )
-from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
-from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttSubscriber
 
 LOGGER = logging.getLogger(__name__)
 
@@ -101,24 +99,17 @@ class Topology:
             raise AssertionError("Topology has not been initialized yet")
         return self._remotes_by_id
 
-    def load_callbacks(
-        self, subscriber: Zigbee2mqttSubscriber, publisher: Zigbee2mqttPublisher
-    ):
+    def load_callbacks(self):
         for remote in self.remotes_by_id.values():
             if isinstance(remote, PicoThreeButtonRaiseLower):
-                self._load_three_button_raise_lower_callback(
-                    remote, subscriber, publisher
-                )
+                self._load_three_button_raise_lower_callback(remote)
             elif isinstance(remote, PicoTwoButton):
-                self._load_two_button_callback(remote, subscriber, publisher)
+                self._load_two_button_callback(remote)
             else:
                 raise AssertionError(f"unable to load callbacks for device {remote}")
 
     def _load_three_button_raise_lower_callback(
-        self,
-        remote: PicoThreeButtonRaiseLower,
-        subscriber: Zigbee2mqttSubscriber,
-        publisher: Zigbee2mqttPublisher,
+        self, remote: PicoThreeButtonRaiseLower
     ):
         for button_id, button in remote.buttons_by_button_id.items():
             self._caseta_bridge.add_button_subscriber(
@@ -128,12 +119,7 @@ class Topology:
                 ),
             )
 
-    def _load_two_button_callback(
-        self,
-        remote: PicoTwoButton,
-        subscriber: Zigbee2mqttSubscriber,
-        publisher: Zigbee2mqttPublisher,
-    ):
+    def _load_two_button_callback(self, remote: PicoTwoButton):
         pass
 
     def _load_topology_callbacks(self):
