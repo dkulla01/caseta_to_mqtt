@@ -36,23 +36,7 @@ class Zigbee2mqttSubscriber:
             await self._mqtt_client.subscribe("zigbee2mqtt/bridge/groups")
             async for message in messages:
                 if message.topic.matches("zigbee2mqtt/bridge/groups"):
-                    groups_response = (
-                        json.loads(message.payload) if message.payload else []
-                    )
-                    LOGGER.debug(f"got message for topic: {message.topic}")
-                    for group in groups_response:
-                        scenes = [
-                            Zigbee2mqttScene(scene["id"], scene["name"])
-                            for scene in group["scenes"]
-                        ]
-                        new_group = Zigbee2mqttGroup(
-                            group["id"], group["friendly_name"], scenes
-                        )
-                        self._all_groups.add(new_group)
-                        await self._mqtt_client.subscribe(new_group.topic)
-                        await self._mqtt_client.publish(
-                            f"{new_group.topic}/get", json.dumps({"state": ""})
-                        )
+                    await self._handle_groups_response(message)
                 elif any(
                     message.topic.matches(group.topic) for group in self._all_groups
                 ):
@@ -65,9 +49,7 @@ class Zigbee2mqttSubscriber:
                     current_state = self._state_manager.get_group_state(group_name)
                     if not current_state:
                         self._state_manager.initialize_group_state(group_name)
-                        current_state = self._state_manager.get_group_state(
-                            group_name
-                        )
+                        current_state = self._state_manager.get_group_state(group_name)
 
                     async with current_state.lock() as locked_group_state:
                         now = datetime.now()
@@ -84,11 +66,24 @@ class Zigbee2mqttSubscriber:
                             current_scene = locked_group_state.state.scene
                         group_state = GroupState(
                             deserialized_group_response.get("brightness"),
-                            OnOrOff.from_str(
-                                deserialized_group_response.get("state")
-                            ),
+                            OnOrOff.from_str(deserialized_group_response.get("state")),
                             current_scene,
                             datetime.now(),
                         )
                         locked_group_state.state = group_state
                     LOGGER.debug(f"got message for topic: {message.topic}")
+
+    async def _handle_groups_response(self, message: aiomqtt.Message):
+        groups_response = json.loads(message.payload) if message.payload else []
+        LOGGER.debug(f"got message for topic: {message.topic}")
+        for group in groups_response:
+            scenes = [
+                Zigbee2mqttScene(scene["id"], scene["name"])
+                for scene in group["scenes"]
+            ]
+            new_group = Zigbee2mqttGroup(group["id"], group["friendly_name"], scenes)
+            self._all_groups.add(new_group)
+            await self._mqtt_client.subscribe(new_group.topic)
+            await self._mqtt_client.publish(
+                f"{new_group.topic}/get", json.dumps({"state": ""})
+            )
