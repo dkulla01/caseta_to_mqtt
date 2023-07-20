@@ -11,9 +11,8 @@ from caseta_to_mqtt.caseta import topology
 from caseta_to_mqtt.caseta.button_watcher import ButtonTracker
 
 from caseta_to_mqtt.caseta.topology import BridgeConfiguration, Topology
-from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
 from caseta_to_mqtt.z2m.state import StateManager
-from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttSubscriber
+from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttClient
 
 _LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 _HANDLER = logging.StreamHandler(stream=sys.stderr)
@@ -62,11 +61,10 @@ async def main_loop():
                 tls_version=ssl.PROTOCOL_TLS,
             ),
         ) as mqtt_client:
-            publisher = Zigbee2mqttPublisher(mqtt_client, shutdown_latch_wrapper)
-            subscriber = Zigbee2mqttSubscriber(
+            z2m_client = Zigbee2mqttClient(
                 mqtt_client, state_manager, shutdown_latch_wrapper
             )
-            button_tracker = ButtonTracker(shutdown_latch_wrapper, publisher)
+            button_tracker = ButtonTracker(shutdown_latch_wrapper, z2m_client)
 
             smartbridge = topology.default_bridge(bridge_configuration)
             caseta_topology = Topology(
@@ -75,7 +73,7 @@ async def main_loop():
             LOGGER.info("connecting to caseta bridge")
             await caseta_topology.connect()
             LOGGER.info("done connecting to caseta bridge")
-            task_group.create_task(subscriber.subscribe_to_zigbee2mqtt_messages())
+            task_group.create_task(z2m_client.subscribe_to_zigbee2mqtt_messages())
             # task_group.create_task(publisher.publish_loop())
             LOGGER.info("done connecting to mqtt broker")
             caseta_topology.load_callbacks()

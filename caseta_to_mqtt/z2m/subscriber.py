@@ -15,7 +15,11 @@ from caseta_to_mqtt.z2m.state import StateManager
 LOGGER = logging.getLogger(__name__)
 
 
-class Zigbee2mqttSubscriber:
+class Zigbee2mqttClient:
+    _GET_STATE_MESSAGE_BODY: str = json.dumps({"state": {}})
+    _TURN_ON_MESSAGE_BODY: str = json.dumps({"state": OnOrOff.ON.as_str()})
+    _TURN_OFF_MESSAGE_BODY: str = json.dumps({"state": OnOrOff.OFF.as_str()})
+
     def __init__(
         self,
         mqtt_client: aiomqtt.Client,
@@ -86,4 +90,20 @@ class Zigbee2mqttSubscriber:
             await self._mqtt_client.subscribe(new_group.topic)
             await self._mqtt_client.publish(
                 f"{new_group.topic}/get", json.dumps({"state": ""})
+            )
+
+    async def turn_on_group(self, group: Zigbee2mqttGroup):
+        async with self._mqtt_client as client:
+            await client.publish(
+                f"{group.topic}/set",
+            )
+
+    async def turn_off_group(self, group: Zigbee2mqttGroup):
+        async with self._mqtt_client as client:
+            await client.publish(group.topic, json.dumps({"on": False}))
+
+    async def publish_get_loop_state_message(self, group: Zigbee2mqttGroup):
+        async with self._mqtt_client as client:
+            client.publish(
+                f"{group.topic}/get", Zigbee2mqttClient._GET_STATE_MESSAGE_BODY
             )

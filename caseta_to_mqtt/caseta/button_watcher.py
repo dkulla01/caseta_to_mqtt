@@ -17,17 +17,17 @@ from caseta_to_mqtt.caseta.model import (
     ButtonId,
     ButtonState,
 )
-from caseta_to_mqtt.z2m.publisher import Zigbee2mqttPublisher
+from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttClient
 
 LOGGER = logging.getLogger(__name__)
 
 
 class ButtonWatcher:
     def __init__(
-        self, button_history: ButtonHistory, zigbee2mqtt_publisher: Zigbee2mqttPublisher
+        self, button_history: ButtonHistory, zigbee2mqtt_client: Zigbee2mqttClient
     ) -> ButtonWatcher:
         self._button_history = button_history
-        self.zigbee2mqtt_publisher: zigbee2mqtt_publisher
+        self._zigbee2mqtt_client: zigbee2mqtt_client
 
     async def button_watcher_loop(self) -> None:
         button_history = self._button_history
@@ -43,6 +43,7 @@ class ButtonWatcher:
             if current_state == ButtonState.FIRST_PRESS_AND_FIRST_RELEASE:
                 LOGGER.debug(f"{button_log_prefix}: A single press has completed")
                 button_history.is_finished = True
+                # await self._zigbee2mqtt_client.turn_on_group(Zigbee2mqttGroup())
                 return
             elif current_state == ButtonState.FIRST_PRESS_AWAITING_RELEASE:
                 LOGGER.debug(
@@ -87,12 +88,12 @@ class ButtonTracker:
     def __init__(
         self,
         shutdown_latch_wrapper: ShutdownLatchWrapper,
-        zigbee2mqtt_publisher: Zigbee2mqttPublisher,
+        zigbee2mqtt_client: Zigbee2mqttClient,
     ):
         self._mutex = asyncio.Lock()
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._button_watchers_by_remote_id: dict[str, ButtonWatcher] = dict()
-        self._zigbee2mqtt_publisher = zigbee2mqtt_publisher
+        self._zigbee2mqtt_client = zigbee2mqtt_client
 
     def button_event_callback(
         self, remote_id: str, button_id: ButtonId
@@ -129,7 +130,7 @@ class ButtonTracker:
                 or button_watcher._button_history.is_timed_out
             ):
                 button_watcher = ButtonWatcher(
-                    ButtonHistory(remote_id, button_id), self._zigbee2mqtt_publisher
+                    ButtonHistory(remote_id, button_id), self._zigbee2mqtt_client
                 )
                 await button_watcher.increment_history(button_action)
                 asyncio.ensure_future(
