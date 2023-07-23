@@ -17,7 +17,7 @@ from caseta_to_mqtt.caseta.model import (
     ButtonId,
     ButtonState,
 )
-from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttClient
+from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
 
 LOGGER = logging.getLogger(__name__)
 

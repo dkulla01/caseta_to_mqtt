@@ -12,7 +12,7 @@ from caseta_to_mqtt.caseta.button_watcher import ButtonTracker
 
 from caseta_to_mqtt.caseta.topology import BridgeConfiguration, Topology
 from caseta_to_mqtt.z2m.state import StateManager
-from caseta_to_mqtt.z2m.subscriber import Zigbee2mqttClient
+from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
 
 _LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 _HANDLER = logging.StreamHandler(stream=sys.stderr)

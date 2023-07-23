@@ -10,7 +10,7 @@ from caseta_to_mqtt.z2m.model import (
     Zigbee2mqttGroup,
     Zigbee2mqttScene,
 )
-from caseta_to_mqtt.z2m.state import StateManager
+from caseta_to_mqtt.z2m.state import AllGroups, StateManager
 
 LOGGER = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class Zigbee2mqttClient:
         self._mqtt_client: aiomqtt.Client = mqtt_client
         self._state_manager = state_manager
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
-        self._all_groups: set[Zigbee2mqttGroup] = set()
+        self._all_groups: AllGroups = AllGroups()
 
     def get_state(self) -> dict[str, Zigbee2mqttGroup]:
         return {group.friendly_name: group for group in self._all_groups}
@@ -80,17 +80,20 @@ class Zigbee2mqttClient:
     async def _handle_groups_response(self, message: aiomqtt.Message):
         groups_response = json.loads(message.payload) if message.payload else []
         LOGGER.debug(f"got message for topic: {message.topic}")
+        all_groups: set[Zigbee2mqttGroup] = set()
         for group in groups_response:
             scenes = [
                 Zigbee2mqttScene(scene["id"], scene["name"])
                 for scene in group["scenes"]
             ]
             new_group = Zigbee2mqttGroup(group["id"], group["friendly_name"], scenes)
-            self._all_groups.add(new_group)
+            all_groups.add(new_group)
             await self._mqtt_client.subscribe(new_group.topic)
             await self._mqtt_client.publish(
                 f"{new_group.topic}/get", json.dumps({"state": ""})
             )
+
+        await self._all_groups.update_groups(all_groups)
 
     async def turn_on_group(self, group: Zigbee2mqttGroup):
         async with self._mqtt_client as client:

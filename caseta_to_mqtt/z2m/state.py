@@ -3,11 +3,35 @@ from asyncio import Lock
 from contextlib import asynccontextmanager
 import logging
 from typing import Optional
+from caseta_to_mqtt.asynchronous.mutex_wrapper import MutexWrapped
 
-from caseta_to_mqtt.z2m.model import GroupState
+from caseta_to_mqtt.z2m.model import GroupState, Zigbee2mqttGroup
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+class AllGroups:
+    def __init__(self) -> None:
+        self._groups: MutexWrapped[set[Zigbee2mqttGroup]] = MutexWrapped(set())
+
+    async def update_groups(self, new_groups: set[Zigbee2mqttGroup]):
+        async with self._groups.get() as current_groups:
+            removed_groups = current_groups.difference(new_groups)
+            added_groups = new_groups.difference(current_groups)
+            unchanged_groups = new_groups.intersection(current_groups)
+            LOGGER.debug(
+                "%s removed groups, %s added groups, %s unchanged groups",
+                len(removed_groups),
+                len(added_groups),
+                len(unchanged_groups),
+            )
+            current_groups = added_groups.union(unchanged_groups)
+
+    async def get_groups(self) -> set[Zigbee2mqttGroup]:
+        """N.B. don't modify the groups that you get returned here"""
+        async with self._groups.get() as groups:
+            return groups
 
 
 class LockableGroupState:
