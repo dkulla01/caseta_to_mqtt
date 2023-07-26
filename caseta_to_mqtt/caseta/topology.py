@@ -1,5 +1,4 @@
 from __future__ import annotations
-from dataclasses import dataclass
 import itertools
 import logging
 
@@ -17,20 +16,14 @@ from caseta_to_mqtt.caseta.model import (
 LOGGER = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class BridgeConfiguration:
-    caseta_bridge_hostname: str
-    caseta_key_file: str
-    caseta_cert_file: str
-    caseta_ca_file: str
-
-
-def default_bridge(bridge_configuration: BridgeConfiguration) -> Smartbridge:
+def default_bridge(
+    hostname: str, path_to_key_file: str, path_to_cert_file: str, path_to_ca_file: str
+) -> Smartbridge:
     return Smartbridge.create_tls(
-        bridge_configuration.caseta_bridge_hostname,
-        bridge_configuration.caseta_key_file,
-        bridge_configuration.caseta_cert_file,
-        bridge_configuration.caseta_ca_file,
+        hostname,
+        path_to_key_file,
+        path_to_cert_file,
+        path_to_ca_file,
     )
 
 

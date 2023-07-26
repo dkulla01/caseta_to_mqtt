@@ -42,7 +42,8 @@ class Zigbee2mqttClient:
                 if message.topic.matches("zigbee2mqtt/bridge/groups"):
                     await self._handle_groups_response(message)
                 elif any(
-                    message.topic.matches(group.topic) for group in self._all_groups
+                    message.topic.matches(group.topic)
+                    for group in self._all_groups.get_groups()
                 ):
                     deserialized_group_response = (
                         json.loads(message.payload) if message.payload else {}

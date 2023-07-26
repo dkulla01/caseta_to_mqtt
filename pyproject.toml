@@ -11,7 +11,6 @@ python = "^3.11"
 pylutron-caseta = {extras = ["cli"], version = "^0.18.1"}
 aiomqtt = "^1.0.0"
 dynaconf = "^3.1.12"
-dependency-injector = "^4.41.0"
 
 
 [tool.poetry.group.dev.dependencies]
