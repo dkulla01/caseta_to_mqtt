@@ -19,4 +19,4 @@ class MutexWrapped(Generic[T]):
             await self._lock.acquire()
             yield self._wrapped_object
         finally:
-            self._lock.release
+            self._lock.release()

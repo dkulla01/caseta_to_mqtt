@@ -47,7 +47,7 @@ async def main_loop(settings: Dynaconf):
             z2m_client = Zigbee2mqttClient(
                 mqtt_client, state_manager, shutdown_latch_wrapper
             )
-            button_tracker = ButtonTracker(shutdown_latch_wrapper, z2m_client)
+            button_tracker = ButtonTracker(shutdown_latch_wrapper)
 
             smartbridge = topology.default_bridge(
                 settings.caseta_bridge_hostname,

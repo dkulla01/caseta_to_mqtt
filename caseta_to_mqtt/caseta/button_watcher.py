@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 import logging
 from typing import Callable
+from caseta_to_mqtt.asynchronous.mutex_wrapper import MutexWrapped
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 
 from caseta_to_mqtt.caseta import (
@@ -17,17 +18,13 @@ from caseta_to_mqtt.caseta.model import (
     ButtonId,
     ButtonState,
 )
-from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
 
 LOGGER = logging.getLogger(__name__)
 
 
 class ButtonWatcher:
-    def __init__(
-        self, button_history: ButtonHistory, zigbee2mqtt_client: Zigbee2mqttClient
-    ) -> ButtonWatcher:
+    def __init__(self, button_history: ButtonHistory) -> ButtonWatcher:
         self._button_history = button_history
-        self._zigbee2mqtt_client: zigbee2mqtt_client
 
     async def button_watcher_loop(self) -> None:
         button_history = self._button_history
@@ -85,15 +82,12 @@ class ButtonWatcher:
 
 
 class ButtonTracker:
-    def __init__(
-        self,
-        shutdown_latch_wrapper: ShutdownLatchWrapper,
-        zigbee2mqtt_client: Zigbee2mqttClient,
-    ):
-        self._mutex = asyncio.Lock()
+    def __init__(self, shutdown_latch_wrapper: ShutdownLatchWrapper):
+        # self._mutex = asyncio.Lock()
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
-        self._button_watchers_by_remote_id: dict[str, ButtonWatcher] = dict()
-        self._zigbee2mqtt_client = zigbee2mqtt_client
+        self._button_watchers_by_remote_id: MutexWrapped[
+            dict[str, ButtonWatcher]
+        ] = MutexWrapped(dict())
 
     def button_event_callback(
         self, remote_id: str, button_id: ButtonId
@@ -118,10 +112,8 @@ class ButtonTracker:
             f"got a button event: remote_id: {remote_id}, button_id: {button_id}, button_action: {button_action}"
         )
 
-        async with self._mutex:
-            button_watcher: ButtonWatcher = self._button_watchers_by_remote_id.get(
-                remote_id
-            )
+        async with self._button_watchers_by_remote_id.get() as button_watchers_by_remote_id:
+            button_watcher: ButtonWatcher = button_watchers_by_remote_id.get(remote_id)
 
             if (
                 not button_watcher
@@ -129,9 +121,7 @@ class ButtonTracker:
                 or button_watcher._button_history.is_finished
                 or button_watcher._button_history.is_timed_out
             ):
-                button_watcher = ButtonWatcher(
-                    ButtonHistory(remote_id, button_id), self._zigbee2mqtt_client
-                )
+                button_watcher = ButtonWatcher(ButtonHistory(remote_id, button_id))
                 await button_watcher.increment_history(button_action)
                 asyncio.ensure_future(
                     self._shutdown_latch_wrapper.wrap_with_shutdown_latch(
@@ -140,4 +130,4 @@ class ButtonTracker:
                 )
             else:
                 await button_watcher.increment_history(button_action)
-            self._button_watchers_by_remote_id[remote_id] = button_watcher
+            button_watchers_by_remote_id[remote_id] = button_watcher

@@ -114,15 +114,4 @@ class Topology:
 
     def _load_two_button_callback(self, remote: PicoTwoButton):
         pass
-
-    def _load_topology_callbacks(self):
-        for remote_id, buttons in self._buttons_by_remote_id.items():
-            [
-                self._caseta_bridge.add_button_subscriber(
-                    button["device_id"],
-                    self._button_tracker.button_event_callback(
-                        remote_id, ButtonId.of_int(button["button_number"])
-                    ),
-                )
-                for button in buttons
-            ]
+ 
