@@ -13,7 +13,8 @@ from caseta_to_mqtt.caseta.button_watcher import ButtonTracker
 
 from caseta_to_mqtt.caseta.topology import Topology
 from caseta_to_mqtt.config import settings as dynaconf_settings
-from caseta_to_mqtt.z2m.state import StateManager
+from caseta_to_mqtt.event_handler import EventHandler
+from caseta_to_mqtt.z2m.state import AllGroups, StateManager
 from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
 
 _LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
@@ -44,10 +45,14 @@ async def main_loop(settings: Dynaconf):
                 tls_version=ssl.PROTOCOL_TLS,
             ),
         ) as mqtt_client:
+            z2m_group_tracker = AllGroups()
             z2m_client = Zigbee2mqttClient(
-                mqtt_client, state_manager, shutdown_latch_wrapper
+                mqtt_client, state_manager, z2m_group_tracker, shutdown_latch_wrapper
             )
-            button_tracker = ButtonTracker(shutdown_latch_wrapper)
+            caseta_event_handler: EventHandler = EventHandler(
+                z2m_client, z2m_group_tracker, settings
+            )
+            button_tracker = ButtonTracker(caseta_event_handler, shutdown_latch_wrapper)
 
             smartbridge = topology.default_bridge(
                 settings.caseta_bridge_hostname,

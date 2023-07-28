@@ -24,12 +24,13 @@ class Zigbee2mqttClient:
         self,
         mqtt_client: aiomqtt.Client,
         state_manager: StateManager,
+        all_groups: AllGroups,
         shutdown_latch_wrapper: ShutdownLatchWrapper,
     ):
         self._mqtt_client: aiomqtt.Client = mqtt_client
         self._state_manager = state_manager
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
-        self._all_groups: AllGroups = AllGroups()
+        self._all_groups: AllGroups = all_groups
 
     def get_state(self) -> dict[str, Zigbee2mqttGroup]:
         return {group.friendly_name: group for group in self._all_groups}
@@ -103,17 +104,16 @@ class Zigbee2mqttClient:
         await self._all_groups.update_groups(all_groups)
 
     async def turn_on_group(self, group: Zigbee2mqttGroup):
-        async with self._mqtt_client as client:
-            await client.publish(
-                f"{group.topic}/set",
-            )
+        await self._mqtt_client.publish(
+            f"{group.topic}/set", Zigbee2mqttClient._TURN_ON_MESSAGE_BODY
+        )
 
     async def turn_off_group(self, group: Zigbee2mqttGroup):
-        async with self._mqtt_client as client:
-            await client.publish(group.topic, json.dumps({"on": False}))
+        await self._mqtt_client.publish(
+            f"{group.topic}/set", Zigbee2mqttClient._TURN_OFF_MESSAGE_BODY
+        )
 
     async def publish_get_loop_state_message(self, group: Zigbee2mqttGroup):
-        async with self._mqtt_client as client:
-            client.publish(
-                f"{group.topic}/get", Zigbee2mqttClient._GET_STATE_MESSAGE_BODY
-            )
+        await self._mqtt_client.publish(
+            f"{group.topic}/get", Zigbee2mqttClient._GET_STATE_MESSAGE_BODY
+        )

@@ -70,13 +70,15 @@ class Topology:
                 for button in remote_buttons
             }
 
+            device_name = device["name"].removesuffix("_Pico")
+
             if device["type"] == PicoThreeButtonRaiseLower.TYPE:
                 self._remotes_by_id[device_id] = PicoThreeButtonRaiseLower(
-                    int(device_id), device["name"], buttons_by_id
+                    int(device_id), device_name, buttons_by_id
                 )
             elif device["type"] == PicoTwoButton.TYPE:
                 self._remotes_by_id[device_id] = PicoTwoButton(
-                    int(device_id), device["name"], buttons_by_id
+                    int(device_id), device_name, buttons_by_id
                 )
             else:
                 LOGGER.debug(
@@ -107,11 +109,8 @@ class Topology:
         for button_id, button in remote.buttons_by_button_id.items():
             self._caseta_bridge.add_button_subscriber(
                 str(button_id),
-                self._button_tracker.button_event_callback(
-                    str(remote.device_id), button
-                ),
+                self._button_tracker.button_event_callback(remote, button),
             )
 
     def _load_two_button_callback(self, remote: PicoTwoButton):
         pass
- 

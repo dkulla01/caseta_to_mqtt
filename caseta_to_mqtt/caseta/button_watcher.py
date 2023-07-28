@@ -17,21 +17,20 @@ from caseta_to_mqtt.caseta.model import (
     ButtonId,
     ButtonState,
     IllegalStateTransitionError,
+    PicoRemote,
 )
+from caseta_to_mqtt.event_handler import ButtonEvent, CasetaEvent, EventHandler
 
 LOGGER = logging.getLogger(__name__)
 
 
 class ButtonHistory:
-    def __init__(self, remote_id: str, button_id: str) -> None:
-        self.remote_id: str = remote_id
-        self.button_id: str = button_id
+    def __init__(self) -> None:
         self.button_state: MutexWrapped[ButtonState] = MutexWrapped(
             ButtonState.NOT_PRESSED
         )
         self.tracking_started_at: Optional[datetime] = None
         self.is_finished: bool = False
-        # self.mutex: asyncio.Lock = asyncio.Lock()
 
     async def increment(self, button_action: ButtonAction) -> None:
         async with self.button_state.get() as button_state:
@@ -51,15 +50,21 @@ class ButtonHistory:
 
 
 class ButtonWatcher:
-    def __init__(self, button_history: ButtonHistory) -> ButtonWatcher:
-        self.button_history = button_history
+    def __init__(
+        self,
+        remote: PicoRemote,
+        button_id: ButtonId,
+        event_handler: EventHandler,
+    ) -> ButtonWatcher:
+        self._remote: PicoRemote = remote
+        self._button_id: ButtonId = button_id
+        self._event_handler: EventHandler = event_handler
+        self.button_history: ButtonHistory = ButtonHistory()
 
     async def button_watcher_loop(self) -> None:
         button_history = self.button_history
 
-        button_log_prefix = (
-            f"remote: {button_history.remote_id}, button:{button_history.button_id}"
-        )
+        button_log_prefix = f"remote: <id: {self._remote.device_id}, name: {self._remote.name}>, button:{self._button_id}"
 
         button_tracking_window_end = datetime.now() + BUTTON_WATCHER_MAX_DURATION
         await asyncio.sleep(DOUBLE_CLICK_WINDOW.total_seconds())
@@ -68,7 +73,13 @@ class ButtonWatcher:
             if current_state == ButtonState.FIRST_PRESS_AND_FIRST_RELEASE:
                 LOGGER.debug(f"{button_log_prefix}: A single press has completed")
                 button_history.is_finished = True
-                # await self._zigbee2mqtt_client.turn_on_group(Zigbee2mqttGroup())
+                await self._event_handler.handle_event(
+                    CasetaEvent(
+                        self._remote,
+                        self._button_id,
+                        ButtonEvent.SINGLE_PRESS_COMPLETED,
+                    )
+                )
                 return
             elif current_state == ButtonState.FIRST_PRESS_AWAITING_RELEASE:
                 LOGGER.debug(
@@ -110,39 +121,47 @@ class ButtonWatcher:
 
 
 class ButtonTracker:
-    def __init__(self, shutdown_latch_wrapper: ShutdownLatchWrapper):
-        # self._mutex = asyncio.Lock()
+    def __init__(
+        self,
+        caseta_event_handler: EventHandler,
+        shutdown_latch_wrapper: ShutdownLatchWrapper,
+    ):
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._button_watchers_by_remote_id: MutexWrapped[
             dict[str, ButtonWatcher]
         ] = MutexWrapped(dict())
+        self._caseta_event_handler = caseta_event_handler
 
     def button_event_callback(
-        self, remote_id: str, button_id: ButtonId
+        self, remote: PicoRemote, button_id: ButtonId
     ) -> Callable[[str], None]:
         return lambda button_event_str: asyncio.get_running_loop().create_task(
             self._process_button_event(
-                remote_id, button_id, ButtonAction.of_str(button_event_str)
+                remote, button_id, ButtonAction.of_str(button_event_str)
             )
         )
 
     async def _process_button_event(
-        self, remote_id: str, button_id: ButtonId, button_action: ButtonAction
+        self, remote: PicoRemote, button_id: ButtonId, button_action: ButtonAction
     ):
         await self._shutdown_latch_wrapper.wrap_with_shutdown_latch(
-            self._inner_process_button_event(remote_id, button_id, button_action)
+            self._inner_process_button_event(remote, button_id, button_action)
         )
 
     async def _inner_process_button_event(
-        self, remote_id: str, button_id: ButtonId, button_action: ButtonAction
+        self, remote: PicoRemote, button_id: ButtonId, button_action: ButtonAction
     ):
         LOGGER.info(
-            f"got a button event: remote_id: {remote_id}, button_id: {button_id}, button_action: {button_action}"
+            "got a button event: remote: (name: %s, id:  %s), button_id: %s, button_action: %s",
+            remote.name,
+            remote.device_id,
+            button_id,
+            button_action,
         )
 
         async with self._button_watchers_by_remote_id.get() as button_watchers_by_remote_id:
             button_watcher: ButtonWatcher = button_watchers_by_remote_id.value.get(
-                remote_id
+                remote.device_id
             )
 
             if (
@@ -151,7 +170,9 @@ class ButtonTracker:
                 or button_watcher.button_history.is_finished
                 or button_watcher.button_history.is_timed_out
             ):
-                button_watcher = ButtonWatcher(ButtonHistory(remote_id, button_id))
+                button_watcher = ButtonWatcher(
+                    remote, button_id, self._caseta_event_handler
+                )
                 await button_watcher.increment_history(button_action)
                 asyncio.ensure_future(
                     self._shutdown_latch_wrapper.wrap_with_shutdown_latch(
@@ -160,4 +181,4 @@ class ButtonTracker:
                 )
             else:
                 await button_watcher.increment_history(button_action)
-            button_watchers_by_remote_id.value[remote_id] = button_watcher
+            button_watchers_by_remote_id.value[remote.device_id] = button_watcher
