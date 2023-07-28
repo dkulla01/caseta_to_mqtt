@@ -35,9 +35,9 @@ class EventHandler:
     def __init__(
         self, z2m_client: Zigbee2mqttClient, all_groups: AllGroups, settings: Dynaconf
     ):
-        self._z2m_client = z2m_client
-        self._all_groups = all_groups
-        self._settings = settings
+        self._z2m_client: Zigbee2mqttClient = z2m_client
+        self._all_groups: AllGroups = all_groups
+        self._settings: Dynaconf = settings
 
     async def translate_caseta_room_to_z2m_room(
         self, remote_name: str

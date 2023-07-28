@@ -25,7 +25,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ButtonHistory:
-    def __init__(self) -> None:
+    def __init__(self) -> ButtonHistory:
         self.button_state: MutexWrapped[ButtonState] = MutexWrapped(
             ButtonState.NOT_PRESSED
         )
@@ -64,7 +64,11 @@ class ButtonWatcher:
     async def button_watcher_loop(self) -> None:
         button_history = self.button_history
 
-        button_log_prefix = f"remote: <id: {self._remote.device_id}, name: {self._remote.name}>, button:{self._button_id}"
+        button_log_prefix = (
+            f"remote: <id: {self._remote.device_id}, "
+            f"name: {self._remote.name}>, "
+            f"button:{self._button_id}"
+        )
 
         button_tracking_window_end = datetime.now() + BUTTON_WATCHER_MAX_DURATION
         await asyncio.sleep(DOUBLE_CLICK_WINDOW.total_seconds())
@@ -136,19 +140,14 @@ class ButtonTracker:
         self, remote: PicoRemote, button_id: ButtonId
     ) -> Callable[[str], None]:
         return lambda button_event_str: asyncio.get_running_loop().create_task(
-            self._process_button_event(
-                remote, button_id, ButtonAction.of_str(button_event_str)
+            self._shutdown_latch_wrapper.wrap_with_shutdown_latch(
+                self._process_button_event(
+                    remote, button_id, ButtonAction.of_str(button_event_str)
+                )
             )
         )
 
     async def _process_button_event(
-        self, remote: PicoRemote, button_id: ButtonId, button_action: ButtonAction
-    ):
-        await self._shutdown_latch_wrapper.wrap_with_shutdown_latch(
-            self._inner_process_button_event(remote, button_id, button_action)
-        )
-
-    async def _inner_process_button_event(
         self, remote: PicoRemote, button_id: ButtonId, button_action: ButtonAction
     ):
         LOGGER.info(

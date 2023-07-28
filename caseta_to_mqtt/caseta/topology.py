@@ -37,7 +37,7 @@ class Topology:
         self._caseta_bridge: Smartbridge = caseta_bridge
         self._button_tracker: ButtonTracker = button_tracker
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
-        self._is_initialized = False
+        self._is_initialized: bool = False
         self._remotes_by_id: dict[int, PicoRemote] = {}
 
     async def connect(self) -> None:
@@ -46,8 +46,7 @@ class Topology:
             return
 
         LOGGER.info("connecting to caseta bridge")
-        connection_future = self._caseta_bridge.connect()
-        await self._shutdown_latch_wrapper.wrap_with_shutdown_latch(connection_future)
+        await self._caseta_bridge.connect()
         self._is_initialized = True
         all_buttons = self._caseta_bridge.get_buttons()
         all_devices = self._caseta_bridge.get_devices()

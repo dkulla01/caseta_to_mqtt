@@ -66,8 +66,11 @@ async def main_loop(settings: Dynaconf):
             LOGGER.info("connecting to caseta bridge")
             await caseta_topology.connect()
             LOGGER.info("done connecting to caseta bridge")
-            task_group.create_task(z2m_client.subscribe_to_zigbee2mqtt_messages())
-            # task_group.create_task(publisher.publish_loop())
+            task_group.create_task(
+                shutdown_latch_wrapper.wrap_with_shutdown_latch(
+                    z2m_client.subscribe_to_zigbee2mqtt_messages()
+                )
+            )
             LOGGER.info("done connecting to mqtt broker")
             caseta_topology.load_callbacks()
             LOGGER.info
