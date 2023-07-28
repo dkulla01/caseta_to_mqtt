@@ -17,21 +17,21 @@ class AllGroups:
 
     async def update_groups(self, new_groups: set[Zigbee2mqttGroup]):
         async with self._groups.get() as current_groups:
-            removed_groups = current_groups.difference(new_groups)
-            added_groups = new_groups.difference(current_groups)
-            unchanged_groups = new_groups.intersection(current_groups)
+            removed_groups = current_groups.value.difference(new_groups)
+            added_groups = new_groups.difference(current_groups.value)
+            unchanged_groups = new_groups.intersection(current_groups.value)
             LOGGER.debug(
                 "%s removed groups, %s added groups, %s unchanged groups",
                 len(removed_groups),
                 len(added_groups),
                 len(unchanged_groups),
             )
-            current_groups = added_groups.union(unchanged_groups)
+            current_groups.value = added_groups.union(unchanged_groups)
 
     async def get_groups(self) -> set[Zigbee2mqttGroup]:
         """N.B. don't modify the groups that you get returned here"""
         async with self._groups.get() as groups:
-            return groups
+            return groups.value
 
 
 class LockableGroupState:

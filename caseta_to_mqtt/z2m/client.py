@@ -41,42 +41,48 @@ class Zigbee2mqttClient:
             async for message in messages:
                 if message.topic.matches("zigbee2mqtt/bridge/groups"):
                     await self._handle_groups_response(message)
-                elif any(
-                    message.topic.matches(group.topic)
-                    for group in self._all_groups.get_groups()
-                ):
-                    deserialized_group_response = (
-                        json.loads(message.payload) if message.payload else {}
-                    )
-                    group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(
-                        message.topic.value
-                    )
-                    current_state = self._state_manager.get_group_state(group_name)
-                    if not current_state:
-                        self._state_manager.initialize_group_state(group_name)
-                        current_state = self._state_manager.get_group_state(group_name)
 
-                    async with current_state.lock() as locked_group_state:
-                        now = datetime.now()
-
-                        # todo: this should be the first configured scene, not "none"
-                        current_scene = None
-
-                        if (
-                            locked_group_state.state
-                            and locked_group_state.state.scene
-                            and now - locked_group_state.state.updated_at
-                            < timedelta(seconds=60)
-                        ):
-                            current_scene = locked_group_state.state.scene
-                        group_state = GroupState(
-                            deserialized_group_response.get("brightness"),
-                            OnOrOff.from_str(deserialized_group_response.get("state")),
-                            current_scene,
-                            datetime.now(),
+                else:
+                    current_groups = await self._all_groups.get_groups()
+                    if any(
+                        message.topic.matches(group.topic) for group in current_groups
+                    ):
+                        deserialized_group_response = (
+                            json.loads(message.payload) if message.payload else {}
                         )
-                        locked_group_state.state = group_state
-                    LOGGER.debug(f"got message for topic: {message.topic}")
+                        group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(
+                            message.topic.value
+                        )
+                        current_state = self._state_manager.get_group_state(group_name)
+                        if not current_state:
+                            self._state_manager.initialize_group_state(group_name)
+                            current_state = self._state_manager.get_group_state(
+                                group_name
+                            )
+
+                        async with current_state.lock() as locked_group_state:
+                            now = datetime.now()
+
+                            # todo: this should be the first configured scene, not "none"
+                            current_scene = None
+
+                            if (
+                                locked_group_state.state
+                                and locked_group_state.state.scene
+                                and now - locked_group_state.state.updated_at
+                                < timedelta(seconds=60)
+                            ):
+                                current_scene = locked_group_state.state.scene
+                            group_state = GroupState(
+                                deserialized_group_response.get("brightness"),
+                                OnOrOff.from_str(
+                                    deserialized_group_response.get("state")
+                                ),
+                                current_scene,
+                                datetime.now(),
+                            )
+                            locked_group_state.state = group_state
+                        LOGGER.debug(f"got message for topic: {message.topic}")
 
     async def _handle_groups_response(self, message: aiomqtt.Message):
         groups_response = json.loads(message.payload) if message.payload else []

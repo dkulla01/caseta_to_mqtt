@@ -1,11 +1,7 @@
 from __future__ import annotations
-from asyncio import Lock
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
-from typing import ClassVar, Optional
-
-from caseta_to_mqtt.caseta import BUTTON_WATCHER_MAX_DURATION
+from typing import ClassVar
 
 
 class IllegalStateTransitionError(Exception):
@@ -70,6 +66,11 @@ class ButtonState(Enum):
             )
         return list(ButtonState)[self.value + 1]
 
+    def is_button_action_valid(self, button_action: ButtonAction) -> bool:
+        return (self.is_awaiting_press and button_action == ButtonAction.PRESS) or (
+            self.is_awaiting_release and button_action == ButtonAction.RELEASE
+        )
+
     @property
     def is_awaiting_press(self):
         return self in {
@@ -83,36 +84,3 @@ class ButtonState(Enum):
             ButtonState.FIRST_PRESS_AWAITING_RELEASE,
             ButtonState.SECOND_PRESS_AWAITING_RELEASE,
         }
-
-
-class ButtonHistory:
-    def __init__(self, remote_id: str, button_id: str) -> None:
-        self.remote_id: str = remote_id
-        self.button_id: str = button_id
-        self.button_state: ButtonState = ButtonState.NOT_PRESSED
-        self.tracking_started_at: Optional[datetime] = None
-        self.is_finished: bool = False
-        self.mutex: Lock = Lock()
-
-    async def increment(self, button_action: ButtonAction):
-        async with self.mutex:
-            self._validate_button_state_transition(button_action)
-            if self.button_state == ButtonState.NOT_PRESSED:
-                self.tracking_started_at = datetime.now()
-            self.button_state = self.button_state.next_state()
-
-    def _validate_button_state_transition(self, button_action: ButtonAction) -> None:
-        if button_action == ButtonAction.PRESS:
-            if not self.button_state.is_awaiting_press:
-                raise IllegalStateTransitionError()
-        elif button_action == ButtonAction.RELEASE:
-            if not self.button_state.is_awaiting_release:
-                raise IllegalStateTransitionError
-
-    @property
-    def is_timed_out(self) -> bool:
-        return (
-            self.tracking_started_at
-            and (datetime.now() - self.tracking_started_at)
-            > BUTTON_WATCHER_MAX_DURATION
-        )
