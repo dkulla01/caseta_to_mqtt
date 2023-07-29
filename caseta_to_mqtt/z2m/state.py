@@ -1,5 +1,4 @@
 from __future__ import annotations
-from asyncio import Lock
 from contextlib import asynccontextmanager
 import logging
 from typing import Optional
@@ -34,34 +33,41 @@ class AllGroups:
             return groups.value
 
 
-class LockableGroupState:
-    def __init__(self, group_friendly_name: str) -> None:
-        self._lock: Lock = Lock()
-        self.group_friendly_name = group_friendly_name
-        self.state: Optional[GroupState] = None
+class GroupStateManager:
+    def __init__(self) -> None:
+        # this is a wonky type: a mutex locked dict of mutex locked group state objects
+        # - we want adding and removing keys to be concurrent-safe (no two tasks should make a new entry for
+        #   the same key concurrently)
+        # - we want updates to each value to be concurrent-safe (no two tasks should be updating or reading
+        #   an entry concurrently)
+        # - two different KV pairs can be individually updated concurrently
+        # so the access pattern should look like:
+        # async with "the lock on the dict of GroupState objects locked":
+        #   ensure that a mutex-wrapped value for a given key exists. if it doesn't create one
+        #   get the KV pair
+        # async with "the lock on the KV pair acquired":
+        #   make whatever updates to the value that you need
+        #
+        # this should ensure the concurrency behavior that I want.
+        self.group_state: MutexWrapped[
+            dict[str, MutexWrapped[Optional[GroupState]]]
+        ] = MutexWrapped({})
 
     @asynccontextmanager
-    async def lock(self) -> LockableGroupState:
-        try:
-            await self._lock.acquire()
-            yield self
-        finally:
-            self._lock.release()
+    async def get_group_state(self) -> dict[str, MutexWrapped[Optional[GroupState]]]:
+        async with self.group_state.get() as locked_group_state_dict:
+            yield locked_group_state_dict.value
 
-
-class StateManager:
-    def __init__(self) -> StateManager:
-        self._group_state: dict[str, LockableGroupState] = {}
-
-    # async def set_group_state(self, group_name: str, state: GroupState):
-    #     if group_name not in self._group_state:
-    #         self._group_state[group_name] = LockableGroupState(state)
-
-    #     async with self._group_state[group_name].get_state() as locked_state:
-    #         locked_state[group_name] = state
-
-    def initialize_group_state(self, group_name: str):
-        self._group_state[group_name] = LockableGroupState(group_name)
-
-    def get_group_state(self, group_name) -> Optional[LockableGroupState]:
-        return self._group_state.get(group_name)
+    async def put_group_state(self, group_friendly_name: str, group_state: GroupState):
+        async with self.group_state.get() as locked_group_state:
+            current_group_state = locked_group_state.value.get(group_friendly_name)
+            if not current_group_state:
+                locked_group_state.value[group_friendly_name] = group_state
+            else:
+                updated_group_state = GroupState(
+                    brightness=current_group_state.brightness or group_state.brightness,
+                    state=group_state.state,
+                    scene=current_group_state.scene or group_state.scene,
+                    updated_at=group_state.updated_at,
+                )
+            locked_group_state.value[group_friendly_name] = updated_group_state

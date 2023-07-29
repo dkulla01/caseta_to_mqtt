@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
 import json
 import logging
+from typing import Optional
 import aiomqtt
+from caseta_to_mqtt.asynchronous.mutex_wrapper import MutexWrapped
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 from caseta_to_mqtt.z2m.model import (
@@ -10,7 +12,7 @@ from caseta_to_mqtt.z2m.model import (
     Zigbee2mqttGroup,
     Zigbee2mqttScene,
 )
-from caseta_to_mqtt.z2m.state import AllGroups, StateManager
+from caseta_to_mqtt.z2m.state import AllGroups, GroupStateManager
 
 LOGGER = logging.getLogger(__name__)
 
@@ -23,17 +25,14 @@ class Zigbee2mqttClient:
     def __init__(
         self,
         mqtt_client: aiomqtt.Client,
-        state_manager: StateManager,
+        group_state_manager: GroupStateManager,
         all_groups: AllGroups,
         shutdown_latch_wrapper: ShutdownLatchWrapper,
     ):
         self._mqtt_client: aiomqtt.Client = mqtt_client
-        self._state_manager = state_manager
+        self._group_state_manager = group_state_manager
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._all_groups: AllGroups = all_groups
-
-    def get_state(self) -> dict[str, Zigbee2mqttGroup]:
-        return {group.friendly_name: group for group in self._all_groups}
 
     async def subscribe_to_zigbee2mqtt_messages(self):
         async with self._mqtt_client.messages() as messages:
@@ -48,42 +47,56 @@ class Zigbee2mqttClient:
                     if any(
                         message.topic.matches(group.topic) for group in current_groups
                     ):
+                        LOGGER.debug(f"got message for topic: {message.topic}")
                         deserialized_group_response = (
                             json.loads(message.payload) if message.payload else {}
                         )
                         group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(
                             message.topic.value
                         )
-                        current_state = self._state_manager.get_group_state(group_name)
-                        if not current_state:
-                            self._state_manager.initialize_group_state(group_name)
-                            current_state = self._state_manager.get_group_state(
+
+                        now = datetime.now()
+
+                        # todo: this should be the first configured scene, not "none"
+                        current_scene = None
+                        current_group_state: MutexWrapped[Optional[GroupState]] = None
+                        async with self._group_state_manager.get_group_state() as group_states_by_friendly_name:
+                            if group_name not in group_states_by_friendly_name:
+                                group_states_by_friendly_name[
+                                    group_name
+                                ] = MutexWrapped(None)
+                            current_group_state = group_states_by_friendly_name.get(
                                 group_name
                             )
 
-                        async with current_state.lock() as locked_group_state:
-                            now = datetime.now()
-
-                            # todo: this should be the first configured scene, not "none"
-                            current_scene = None
-
-                            if (
-                                locked_group_state.state
-                                and locked_group_state.state.scene
-                                and now - locked_group_state.state.updated_at
-                                < timedelta(seconds=60)
+                        async with current_group_state.get() as locked_group_state:
+                            if not locked_group_state.value or (
+                                now - locked_group_state.value.updated_at
+                                > timedelta(seconds=60)
                             ):
-                                current_scene = locked_group_state.state.scene
-                            group_state = GroupState(
-                                deserialized_group_response.get("brightness"),
-                                OnOrOff.from_str(
-                                    deserialized_group_response.get("state")
-                                ),
-                                current_scene,
-                                datetime.now(),
-                            )
-                            locked_group_state.state = group_state
-                        LOGGER.debug(f"got message for topic: {message.topic}")
+                                locked_group_state.value = GroupState(
+                                    brightness=None,
+                                    state=OnOrOff.from_str(
+                                        deserialized_group_response.get("state")
+                                    ),
+                                    scene=None,
+                                    updated_at=now,
+                                )
+                            else:
+                                current_value = locked_group_state.value
+                                locked_group_state.value = GroupState(
+                                    brightness=deserialized_group_response.get(
+                                        "brightness"
+                                    )
+                                    or current_value.brightness,
+                                    state=OnOrOff.from_str(
+                                        deserialized_group_response.get("state")
+                                    )
+                                    or current_value.state,
+                                    scene=current_value.scene,
+                                    updated_at=now,
+                                )
+                    LOGGER.debug("done handling message for topic %s", message.topic)
 
     async def _handle_groups_response(self, message: aiomqtt.Message):
         groups_response = json.loads(message.payload) if message.payload else []

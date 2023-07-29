@@ -49,7 +49,7 @@ class OnOrOff(StrEnum):
         return cls[str_literal.upper()]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class GroupState:
     brightness: Optional[int]
     state: OnOrOff
