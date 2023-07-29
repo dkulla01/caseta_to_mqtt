@@ -89,9 +89,23 @@ class ButtonWatcher:
                 LOGGER.debug(
                     f"{button_log_prefix}: a long press has started but not finished"
                 )
+                await self._event_handler.handle_event(
+                    CasetaEvent(
+                        self._remote,
+                        self._button_id,
+                        ButtonEvent.LONG_PRESS_ONGOING,
+                    )
+                )
             elif current_state == ButtonState.DOUBLE_PRESS_FINISHED:
                 LOGGER.debug(f"{button_log_prefix}: A double press has completed")
                 button_history.is_finished = True
+                await self._event_handler.handle_event(
+                    CasetaEvent(
+                        self._remote,
+                        self._button_id,
+                        ButtonEvent.DOUBLE_PRESS_FINISHED,
+                    )
+                )
                 return
             else:
                 LOGGER.debug(f"{button_log_prefix}: current state is {current_state}")
@@ -102,19 +116,38 @@ class ButtonWatcher:
                 if current_state == ButtonState.FIRST_PRESS_AND_FIRST_RELEASE:
                     LOGGER.debug(f"{button_log_prefix}: a long press has completed")
                     button_history.is_finished = True
+                    await self._event_handler.handle_event(
+                        CasetaEvent(
+                            self._remote,
+                            self._button_id,
+                            ButtonEvent.LONG_PRESS_FINISHED,
+                        )
+                    )
                     return
                 elif current_state == ButtonState.FIRST_PRESS_AWAITING_RELEASE:
                     LOGGER.debug(f"{button_log_prefix}: a long press is still ongoing")
-                    # todo: perform long press action
+                    await self._event_handler.handle_event(
+                        CasetaEvent(
+                            self._remote,
+                            self._button_id,
+                            ButtonEvent.LONG_PRESS_ONGOING,
+                        )
+                    )
                 elif current_state == ButtonState.DOUBLE_PRESS_FINISHED:
                     LOGGER.debug(f"{button_log_prefix}: a double press has completed")
                     button_history.is_finished = True
+                    await self._event_handler.handle_event(
+                        CasetaEvent(
+                            self._remote,
+                            self._button_id,
+                            ButtonEvent.DOUBLE_PRESS_FINISHED,
+                        )
+                    )
                     return
                 else:
                     LOGGER.debug(
                         f"{button_log_prefix}: current state is {current_state}"
                     )
-        # async with button_history.mutex:
         button_history.is_finished = True
         LOGGER.debug(
             f"{button_log_prefix}: the button tracking window ended without the button reaching a terminal state"
