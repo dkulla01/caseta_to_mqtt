@@ -29,7 +29,7 @@ LOGGER = logging.getLogger(__name__)
 async def main_loop(settings: Dynaconf):
     shutdown_latch_wrapper = ShutdownLatchWrapper()
 
-    group_state_manager: GroupStateManager = GroupStateManager()
+    group_state_manager: GroupStateManager = GroupStateManager(settings)
     LOGGER.info("connecting to mqtt broker")
     async with asyncio.TaskGroup() as task_group:
         async with aiomqtt.Client(

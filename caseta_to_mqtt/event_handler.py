@@ -7,7 +7,7 @@ from dynaconf import Dynaconf
 from caseta_to_mqtt.caseta.model import ButtonId, PicoRemote
 
 from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
-from caseta_to_mqtt.z2m.model import Zigbee2mqttGroup
+from caseta_to_mqtt.z2m.model import GroupState, Zigbee2mqttGroup
 from caseta_to_mqtt.z2m.state import AllGroups, GroupStateManager
 
 LOGGER = logging.getLogger(__name__)
@@ -65,6 +65,8 @@ class EventHandler:
         if z2m_group_name_maybe:
             return z2m_groups_by_friendly_name.get(z2m_group_name_maybe)
 
+        return None
+
     async def handle_event(self, event: CasetaEvent):
         z2m_group = await self.translate_caseta_room_to_z2m_room(event.remote.name)
         if not z2m_group:
@@ -87,7 +89,7 @@ class EventHandler:
                 )
 
     @staticmethod
-    def _ensure_correct_button(desired_button_id: ButtonId, event: ButtonEvent):
+    def _ensure_correct_button(desired_button_id: ButtonId, event: CasetaEvent):
         if event.button_id != desired_button_id:
             raise AssertionError(
                 f"expecting ButtonId: {desired_button_id}, but received {event}"
@@ -118,3 +120,4 @@ class EventHandler:
         if event.button_event in _LONG_PRESS_BUTTON_EVENTS:
             LOGGER.debug("no action necessary for long press ButtonEvent: %s", event)
             return
+

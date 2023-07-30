@@ -34,7 +34,7 @@ class Zigbee2mqttClient:
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._all_groups: AllGroups = all_groups
 
-    async def subscribe_to_zigbee2mqtt_messages(self):
+    async def subscribe_to_zigbee2mqtt_messages(self) -> None:
         async with self._mqtt_client.messages() as messages:
             # listen for new groups
             await self._mqtt_client.subscribe("zigbee2mqtt/bridge/groups")
@@ -48,54 +48,78 @@ class Zigbee2mqttClient:
                         message.topic.matches(group.topic) for group in current_groups
                     ):
                         LOGGER.debug(f"got message for topic: {message.topic}")
+
+                        payload: str | bytearray | bytes
+                        if isinstance(message.payload, (str, bytearray, bytes)):
+                            payload = message.payload
+                        else:
+                            raise AssertionError(
+                                f"expected deserializable json, but got {type(message.payload)}"
+                            )
                         deserialized_group_response = (
-                            json.loads(message.payload) if message.payload else {}
+                            json.loads(payload) if message.payload else {}
                         )
                         group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(
                             message.topic.value
                         )
 
                         now = datetime.now()
+                        brightness_maybe: Optional[int] = (
+                            int(deserialized_group_response["brightness"])
+                            if "brightness" in deserialized_group_response
+                            else None
+                        )
+                        on_or_off_state = OnOrOff.from_str(
+                            deserialized_group_response.get("state")
+                        )
 
-                        # todo: this should be the first configured scene, not "none"
-                        current_scene = None
-                        current_group_state: MutexWrapped[Optional[GroupState]] = None
-                        async with self._group_state_manager.get_group_state() as group_states_by_friendly_name:
-                            if group_name not in group_states_by_friendly_name:
-                                group_states_by_friendly_name[
-                                    group_name
-                                ] = MutexWrapped(None)
-                            current_group_state = group_states_by_friendly_name.get(
-                                group_name
-                            )
+                        await self._group_state_manager.update_group_state(
+                            group_name,
+                            GroupState(
+                                brightness=brightness_maybe,
+                                state=on_or_off_state,
+                                scene=None,
+                                updated_at=now,
+                            ),
+                        )
 
-                        async with current_group_state.get() as locked_group_state:
-                            if not locked_group_state.value or (
-                                now - locked_group_state.value.updated_at
-                                > timedelta(seconds=60)
-                            ):
-                                locked_group_state.value = GroupState(
-                                    brightness=None,
-                                    state=OnOrOff.from_str(
-                                        deserialized_group_response.get("state")
-                                    ),
-                                    scene=None,
-                                    updated_at=now,
-                                )
-                            else:
-                                current_value = locked_group_state.value
-                                locked_group_state.value = GroupState(
-                                    brightness=deserialized_group_response.get(
-                                        "brightness"
-                                    )
-                                    or current_value.brightness,
-                                    state=OnOrOff.from_str(
-                                        deserialized_group_response.get("state")
-                                    )
-                                    or current_value.state,
-                                    scene=current_value.scene,
-                                    updated_at=now,
-                                )
+                        # current_group_state: MutexWrapped[Optional[GroupState]]
+                        # async with self._group_state_manager.get_group_states_by_friendly_name() as group_states_by_friendly_name:
+                        #     if group_name not in group_states_by_friendly_name:
+                        #         group_states_by_friendly_name[
+                        #             group_name
+                        #         ] = MutexWrapped(None)
+                        #     current_group_state = group_states_by_friendly_name[
+                        #         group_name
+                        #     ]
+
+                        # async with current_group_state.get() as locked_group_state:
+                        #     if not locked_group_state.value or (
+                        #         now - locked_group_state.value.updated_at
+                        #         > timedelta(seconds=60)
+                        #     ):
+                        #         locked_group_state.value = GroupState(
+                        #             brightness=None,
+                        #             state=OnOrOff.from_str(
+                        #                 deserialized_group_response.get("state")
+                        #             ),
+                        #             scene=None,
+                        #             updated_at=now,
+                        #         )
+                        #     else:
+                        #         current_value = locked_group_state.value
+                        #         locked_group_state.value = GroupState(
+                        #             brightness=deserialized_group_response.get(
+                        #                 "brightness"
+                        #             )
+                        #             or current_value.brightness,
+                        #             state=OnOrOff.from_str(
+                        #                 deserialized_group_response.get("state")
+                        #             )
+                        #             or current_value.state,
+                        #             scene=current_value.scene,
+                        #             updated_at=now,
+                        #         )
                     LOGGER.debug("done handling message for topic %s", message.topic)
 
     async def _handle_groups_response(self, message: aiomqtt.Message):

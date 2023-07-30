@@ -1,13 +1,17 @@
 from __future__ import annotations
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 import logging
-from typing import Optional
+from typing import AsyncGenerator, Optional
+
+from dynaconf import Dynaconf
 from caseta_to_mqtt.asynchronous.mutex_wrapper import MutexWrapped
 
 from caseta_to_mqtt.z2m.model import GroupState, Zigbee2mqttGroup
 
 
 LOGGER = logging.getLogger(__name__)
+_GROUP_STATE_RECORD_VALIDITY_LENGTH = timedelta(seconds=60)
 
 
 class AllGroups:
@@ -34,7 +38,7 @@ class AllGroups:
 
 
 class GroupStateManager:
-    def __init__(self) -> None:
+    def __init__(self, settings: Dynaconf) -> None:
         # this is a wonky type: a mutex locked dict of mutex locked group state objects
         # - we want adding and removing keys to be concurrent-safe (no two tasks should make a new entry for
         #   the same key concurrently)
@@ -53,21 +57,57 @@ class GroupStateManager:
             dict[str, MutexWrapped[Optional[GroupState]]]
         ] = MutexWrapped({})
 
+        self._settings: Dynaconf = settings
+        self._zigbee2mqtt_group_scene_cache_ttl = timedelta(
+            seconds=settings.zigbee2mqtt_group_scene_cache_ttl_seconds
+        )
+
     @asynccontextmanager
-    async def get_group_state(self) -> dict[str, MutexWrapped[Optional[GroupState]]]:
+    async def get_group_states_by_friendly_name(
+        self,
+    ) -> AsyncGenerator[dict[str, MutexWrapped[Optional[GroupState]]], None]:
         async with self.group_state.get() as locked_group_state_dict:
             yield locked_group_state_dict.value
 
-    async def put_group_state(self, group_friendly_name: str, group_state: GroupState):
-        async with self.group_state.get() as locked_group_state:
-            current_group_state = locked_group_state.value.get(group_friendly_name)
-            if not current_group_state:
-                locked_group_state.value[group_friendly_name] = group_state
-            else:
-                updated_group_state = GroupState(
-                    brightness=current_group_state.brightness or group_state.brightness,
+    def _is_saved_group_state_scene_too_old(
+        self, current_time: datetime, z2m_group_state: GroupState
+    ) -> bool:
+        saved_group_state_age = current_time - z2m_group_state.updated_at
+        return saved_group_state_age > self._zigbee2mqtt_group_scene_cache_ttl
+
+    async def update_group_state(self, z2m_group_name: str, group_state: GroupState):
+        # ensure a record tracking the group exists
+        now = datetime.now()
+        current_group_state: MutexWrapped[Optional[GroupState]]
+        async with self.group_state.get() as locked_group_state_dict:
+            if z2m_group_name not in locked_group_state_dict.value:
+                locked_group_state_dict.value[z2m_group_name] = MutexWrapped(None)
+            current_group_state = locked_group_state_dict.value[z2m_group_name]
+
+        # now that we have a record tracking the z2m group, merge the new group state
+        # value into the existing group state value
+        #
+        # what are the chances that I got this update logic right?
+        async with current_group_state.get() as locked_group_state:
+            if not locked_group_state.value:
+                locked_group_state.value = GroupState(
+                    brightness=group_state.brightness,
                     state=group_state.state,
-                    scene=current_group_state.scene or group_state.scene,
-                    updated_at=group_state.updated_at,
+                    scene=None,
+                    updated_at=now,
                 )
-            locked_group_state.value[group_friendly_name] = updated_group_state
+
+            if self._is_saved_group_state_scene_too_old(now, locked_group_state.value):
+                locked_group_state.value = GroupState(
+                    brightness=locked_group_state.value.brightness,
+                    state=locked_group_state.value.state,
+                    scene=None,
+                    updated_at=now,
+                )
+            locked_group_state.value = GroupState(
+                brightness=group_state.brightness
+                or locked_group_state.value.brightness,
+                state=group_state.state or locked_group_state.value.state,
+                scene=group_state.scene or locked_group_state.value.scene,
+                updated_at=now,
+            )
