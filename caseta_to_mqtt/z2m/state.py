@@ -81,7 +81,7 @@ class GroupStateManager:
         saved_group_state_age = current_time - z2m_group_state.updated_at
         return saved_group_state_age > self._zigbee2mqtt_group_scene_cache_ttl
 
-    async def update_group_state(self, z2m_group_name: str, group_state: GroupState):
+    async def update_group_state(self, z2m_group_name: str, new_group_state: GroupState):
         # ensure a record tracking the group exists
         now = datetime.now()
         current_group_state: MutexWrapped[Optional[GroupState]]
@@ -97,8 +97,8 @@ class GroupStateManager:
         async with current_group_state.get() as locked_group_state:
             if not locked_group_state.value:
                 locked_group_state.value = GroupState(
-                    brightness=group_state.brightness,
-                    state=group_state.state,
+                    brightness=new_group_state.brightness,
+                    state=new_group_state.state,
                     scene=None,
                     updated_at=now,
                 )
@@ -111,9 +111,9 @@ class GroupStateManager:
                     updated_at=now,
                 )
             locked_group_state.value = GroupState(
-                brightness=group_state.brightness
+                brightness=new_group_state.brightness
                 or locked_group_state.value.brightness,
-                state=group_state.state or locked_group_state.value.state,
-                scene=group_state.scene or locked_group_state.value.scene,
+                state=new_group_state.state or locked_group_state.value.state,
+                scene=new_group_state.scene or locked_group_state.value.scene,
                 updated_at=now,
             )

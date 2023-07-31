@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
 import logging
 from typing import Optional
 import aiomqtt
-from caseta_to_mqtt.asynchronous.mutex_wrapper import MutexWrapped
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 from caseta_to_mqtt.z2m.model import (
@@ -47,43 +46,39 @@ class Zigbee2mqttClient:
                     if any(
                         message.topic.matches(group.topic) for group in current_groups
                     ):
-                        LOGGER.debug(f"got message for topic: {message.topic}")
+                        await self._handle_single_group_response(message)
 
-                        payload: str | bytearray | bytes
-                        if isinstance(message.payload, (str, bytearray, bytes)):
-                            payload = message.payload
-                        else:
-                            raise AssertionError(
-                                f"expected deserializable json, but got {type(message.payload)}"
-                            )
-                        deserialized_group_response = (
-                            json.loads(payload) if message.payload else {}
-                        )
-                        group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(
-                            message.topic.value
-                        )
+    async def _handle_single_group_response(self, message: aiomqtt.Message):
+        LOGGER.debug(f"got message for topic: {message.topic}")
 
-                        now = datetime.now()
-                        brightness_maybe: Optional[int] = (
-                            int(deserialized_group_response["brightness"])
-                            if "brightness" in deserialized_group_response
-                            else None
-                        )
-                        on_or_off_state = OnOrOff.from_str(
-                            deserialized_group_response.get("state")
-                        )
+        payload: str | bytearray | bytes
+        if isinstance(message.payload, (str, bytearray, bytes)):
+            payload = message.payload
+        else:
+            raise AssertionError(
+                f"expected deserializable json, but got {type(message.payload)}"
+            )
+        deserialized_group_response = json.loads(payload) if message.payload else {}
+        group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(message.topic.value)
 
-                        await self._group_state_manager.update_group_state(
-                            group_name,
-                            GroupState(
-                                brightness=brightness_maybe,
-                                state=on_or_off_state,
-                                scene=None,
-                                updated_at=now,
-                            ),
-                        )
+        now = datetime.now()
+        brightness_maybe: Optional[int] = (
+            int(deserialized_group_response["brightness"])
+            if "brightness" in deserialized_group_response
+            else None
+        )
+        on_or_off_state = OnOrOff.from_str(deserialized_group_response.get("state"))
 
-                    LOGGER.debug("done handling message for topic %s", message.topic)
+        await self._group_state_manager.update_group_state(
+            group_name,
+            GroupState(
+                brightness=brightness_maybe,
+                state=on_or_off_state,
+                scene=None,
+                updated_at=now,
+            ),
+        )
+        LOGGER.debug("done handling message for topic %s", message.topic)
 
     async def _handle_groups_response(self, message: aiomqtt.Message):
         payload: str | bytearray | bytes
