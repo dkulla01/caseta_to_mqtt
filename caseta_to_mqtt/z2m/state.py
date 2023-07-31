@@ -69,6 +69,12 @@ class GroupStateManager:
         async with self.group_state.get() as locked_group_state_dict:
             yield locked_group_state_dict.value
 
+    async def get_group_state(
+        self, friendly_name: str
+    ) -> Optional[MutexWrapped[Optional[GroupState]]]:
+        async with self.group_state.get() as locked_group_state_dict:
+            return locked_group_state_dict.value.get(friendly_name)
+
     def _is_saved_group_state_scene_too_old(
         self, current_time: datetime, z2m_group_state: GroupState
     ) -> bool:

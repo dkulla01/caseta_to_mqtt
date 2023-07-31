@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 import logging
 from typing import Optional
@@ -7,7 +8,12 @@ from dynaconf import Dynaconf
 from caseta_to_mqtt.caseta.model import ButtonId, PicoRemote
 
 from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
-from caseta_to_mqtt.z2m.model import GroupState, Zigbee2mqttGroup
+from caseta_to_mqtt.z2m.model import (
+    GroupState,
+    OnOrOff,
+    Zigbee2mqttGroup,
+    Zigbee2mqttScene,
+)
 from caseta_to_mqtt.z2m.state import AllGroups, GroupStateManager
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +41,12 @@ class CasetaEvent:
     remote: PicoRemote
     button_id: ButtonId
     button_event: ButtonEvent
+
+
+@dataclass(frozen=True)
+class PreviousAndNextScene:
+    previous: Zigbee2mqttScene
+    next: Zigbee2mqttScene
 
 
 class EventHandler:
@@ -76,11 +88,11 @@ class EventHandler:
 
         match event.button_id:
             case ButtonId.POWER_ON:
-                await self.handle_power_on_event(z2m_group, event)
+                await self._handle_power_on_event(z2m_group, event)
             case ButtonId.POWER_OFF:
-                await self.handle_power_off_event(z2m_group, event)
+                await self._handle_power_off_event(z2m_group, event)
             case ButtonId.FAVORITE:
-                await self.handle_favorite_button_event(z2m_group, event)
+                await self._handle_favorite_button_event(z2m_group, event)
             case _:
                 LOGGER.info(
                     "%s %s; we haven't implemented handling for other buttons yet",
@@ -95,7 +107,7 @@ class EventHandler:
                 f"expecting ButtonId: {desired_button_id}, but received {event}"
             )
 
-    async def handle_power_on_event(
+    async def _handle_power_on_event(
         self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
     ):
         EventHandler._ensure_correct_button(ButtonId.POWER_ON, event)
@@ -104,7 +116,7 @@ class EventHandler:
             return
         await self._z2m_client.turn_on_group(z2m_group)
 
-    async def handle_power_off_event(
+    async def _handle_power_off_event(
         self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
     ):
         EventHandler._ensure_correct_button(ButtonId.POWER_OFF, event)
@@ -113,7 +125,7 @@ class EventHandler:
             return
         await self._z2m_client.turn_off_group(z2m_group)
 
-    async def handle_favorite_button_event(
+    async def _handle_favorite_button_event(
         self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
     ):
         EventHandler._ensure_correct_button(ButtonId.FAVORITE, event)
@@ -121,3 +133,60 @@ class EventHandler:
             LOGGER.debug("no action necessary for long press ButtonEvent: %s", event)
             return
 
+        current_group_state = await self._group_state_manager.get_group_state(
+            z2m_group.friendly_name
+        )
+        if not current_group_state:
+            raise AssertionError("todo -- should this init an empty group?")
+        async with current_group_state.get() as locked_current_group_state:
+            previous_and_next_scene = await self._determine_previous_and_next_scenes(
+                z2m_group.friendly_name, locked_current_group_state.value
+            )
+            LOGGER.debug("previous_and_next_scene: %s", previous_and_next_scene)
+            next_scene_to_use: Zigbee2mqttScene
+            if event.button_event == ButtonEvent.SINGLE_PRESS_COMPLETED:
+                next_scene_to_use = previous_and_next_scene.next
+            else:
+                if event.button_event != ButtonEvent.DOUBLE_PRESS_FINISHED:
+                    raise AssertionError(
+                        f"expected a double press event, but got {event.button_event}"
+                    )
+                next_scene_to_use = previous_and_next_scene.previous
+            locked_current_group_state.value = GroupState(
+                brightness=None,
+                state=OnOrOff.ON,
+                scene=next_scene_to_use,
+                updated_at=datetime.now(),
+            )
+
+    async def _determine_previous_and_next_scenes(
+        self, friendly_name: str, group_state: Optional[GroupState]
+    ) -> PreviousAndNextScene:
+        all_groups = await self._all_groups.get_groups()
+        z2m_group: Optional[Zigbee2mqttGroup] = next(
+            (group for group in all_groups if group.friendly_name == friendly_name),
+            None,
+        )
+
+        if not z2m_group:
+            raise AssertionError(f"no z2m group named {friendly_name} exists")
+
+        if not group_state or not group_state.scene:
+            return PreviousAndNextScene(z2m_group.scenes[0], z2m_group.scenes[0])
+
+        current_scene_index: int = next(
+            idx for idx, val in enumerate(z2m_group.scenes) if val == group_state.scene
+        )
+
+        if len(z2m_group.scenes) == 1:
+            return PreviousAndNextScene(z2m_group.scenes[0], z2m_group.scenes[0])
+        if current_scene_index == len(z2m_group.scenes) - 1:
+            return PreviousAndNextScene(
+                z2m_group.scenes[current_scene_index - 1], z2m_group.scenes[0]
+            )
+        elif current_scene_index == 0:
+            return PreviousAndNextScene(z2m_group.scenes[-1], z2m_group.scenes[1])
+        return PreviousAndNextScene(
+            z2m_group.scenes[current_scene_index - 1],
+            z2m_group.scenes[current_scene_index + 1],
+        )
