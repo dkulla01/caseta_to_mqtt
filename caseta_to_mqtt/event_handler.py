@@ -152,6 +152,7 @@ class EventHandler:
                         f"expected a double press event, but got {event.button_event}"
                     )
                 next_scene_to_use = previous_and_next_scene.previous
+            await self._z2m_client.recall_scene(z2m_group, next_scene_to_use)
             locked_current_group_state.value = GroupState(
                 brightness=None,
                 state=OnOrOff.ON,

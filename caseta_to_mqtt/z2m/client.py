@@ -83,47 +83,17 @@ class Zigbee2mqttClient:
                             ),
                         )
 
-                        # current_group_state: MutexWrapped[Optional[GroupState]]
-                        # async with self._group_state_manager.get_group_states_by_friendly_name() as group_states_by_friendly_name:
-                        #     if group_name not in group_states_by_friendly_name:
-                        #         group_states_by_friendly_name[
-                        #             group_name
-                        #         ] = MutexWrapped(None)
-                        #     current_group_state = group_states_by_friendly_name[
-                        #         group_name
-                        #     ]
-
-                        # async with current_group_state.get() as locked_group_state:
-                        #     if not locked_group_state.value or (
-                        #         now - locked_group_state.value.updated_at
-                        #         > timedelta(seconds=60)
-                        #     ):
-                        #         locked_group_state.value = GroupState(
-                        #             brightness=None,
-                        #             state=OnOrOff.from_str(
-                        #                 deserialized_group_response.get("state")
-                        #             ),
-                        #             scene=None,
-                        #             updated_at=now,
-                        #         )
-                        #     else:
-                        #         current_value = locked_group_state.value
-                        #         locked_group_state.value = GroupState(
-                        #             brightness=deserialized_group_response.get(
-                        #                 "brightness"
-                        #             )
-                        #             or current_value.brightness,
-                        #             state=OnOrOff.from_str(
-                        #                 deserialized_group_response.get("state")
-                        #             )
-                        #             or current_value.state,
-                        #             scene=current_value.scene,
-                        #             updated_at=now,
-                        #         )
                     LOGGER.debug("done handling message for topic %s", message.topic)
 
     async def _handle_groups_response(self, message: aiomqtt.Message):
-        groups_response = json.loads(message.payload) if message.payload else []
+        payload: str | bytearray | bytes
+        if isinstance(message.payload, (str, bytearray, bytes)):
+            payload = message.payload
+        else:
+            raise AssertionError(
+                f"expected deserializable json, but got {type(message.payload)}"
+            )
+        groups_response = json.loads(payload)  # if message.payload else []
         LOGGER.debug(f"got message for topic: {message.topic}")
         all_groups: set[Zigbee2mqttGroup] = set()
         for group in groups_response:
@@ -153,4 +123,10 @@ class Zigbee2mqttClient:
     async def publish_get_loop_state_message(self, group: Zigbee2mqttGroup):
         await self._mqtt_client.publish(
             f"{group.topic}/get", Zigbee2mqttClient._GET_STATE_MESSAGE_BODY
+        )
+
+    async def recall_scene(self, group: Zigbee2mqttGroup, scene: Zigbee2mqttScene):
+        scene_recall_payload = json.dumps({"scene_recall": scene.id})
+        await self._mqtt_client.publish(
+            f"{group.topic}/set", payload=scene_recall_payload
         )
