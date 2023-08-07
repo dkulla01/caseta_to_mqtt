@@ -68,6 +68,7 @@ async def main_loop(settings: Dynaconf):
             )
             LOGGER.info("connecting to caseta bridge")
             await caseta_topology.connect()
+            caseta_topology.load_callbacks()
             LOGGER.info("done connecting to caseta bridge")
             task_group.create_task(
                 shutdown_latch_wrapper.wrap_with_shutdown_latch(
@@ -75,8 +76,6 @@ async def main_loop(settings: Dynaconf):
                 )
             )
             LOGGER.info("done connecting to mqtt broker")
-            caseta_topology.load_callbacks()
-            LOGGER.info
             await shutdown_latch_wrapper.wait()
             LOGGER.info("received shutdown signal. shutting down")
             await smartbridge.close()

@@ -11,7 +11,6 @@ from caseta_to_mqtt.z2m.model import GroupState, Zigbee2mqttGroup
 
 
 LOGGER = logging.getLogger(__name__)
-_GROUP_STATE_RECORD_VALIDITY_LENGTH = timedelta(seconds=60)
 
 
 class AllGroups:
@@ -81,7 +80,9 @@ class GroupStateManager:
         saved_group_state_age = current_time - z2m_group_state.updated_at
         return saved_group_state_age > self._zigbee2mqtt_group_scene_cache_ttl
 
-    async def update_group_state(self, z2m_group_name: str, new_group_state: GroupState):
+    async def update_group_state(
+        self, z2m_group_name: str, new_group_state: GroupState
+    ):
         # ensure a record tracking the group exists
         now = datetime.now()
         current_group_state: MutexWrapped[Optional[GroupState]]

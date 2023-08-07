@@ -27,7 +27,7 @@ class Zigbee2mqttGroup:
         return topic_name.removeprefix("zigbee2mqtt/")
 
     def __key(self) -> tuple:
-        (
+        return (
             self.id,
             self.friendly_name,
             tuple(f"{scene.id}-{scene.friendly_name}" for scene in self.scenes),

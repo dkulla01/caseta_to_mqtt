@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 import logging
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 from caseta_to_mqtt.asynchronous.mutex_wrapper import MutexWrapped
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 
@@ -25,7 +25,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ButtonHistory:
-    def __init__(self) -> ButtonHistory:
+    def __init__(self) -> None:
         self.button_state: MutexWrapped[ButtonState] = MutexWrapped(
             ButtonState.NOT_PRESSED
         )
@@ -43,7 +43,7 @@ class ButtonHistory:
     @property
     def is_timed_out(self) -> bool:
         return (
-            self.tracking_started_at
+            self.tracking_started_at is not None
             and (datetime.now() - self.tracking_started_at)
             > BUTTON_WATCHER_MAX_DURATION
         )
@@ -55,7 +55,7 @@ class ButtonWatcher:
         remote: PicoRemote,
         button_id: ButtonId,
         event_handler: EventHandler,
-    ) -> ButtonWatcher:
+    ):
         self._remote: PicoRemote = remote
         self._button_id: ButtonId = button_id
         self._event_handler: EventHandler = event_handler
@@ -165,13 +165,13 @@ class ButtonTracker:
     ):
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
         self._button_watchers_by_remote_id: MutexWrapped[
-            dict[str, ButtonWatcher]
+            dict[int, ButtonWatcher]
         ] = MutexWrapped(dict())
         self._caseta_event_handler = caseta_event_handler
 
     def button_event_callback(
         self, remote: PicoRemote, button_id: ButtonId
-    ) -> Callable[[str], None]:
+    ) -> Callable[[str], Any]:
         return lambda button_event_str: asyncio.get_running_loop().create_task(
             self._shutdown_latch_wrapper.wrap_with_shutdown_latch(
                 self._process_button_event(
@@ -192,9 +192,9 @@ class ButtonTracker:
         )
 
         async with self._button_watchers_by_remote_id.get() as button_watchers_by_remote_id:
-            button_watcher: ButtonWatcher = button_watchers_by_remote_id.value.get(
-                remote.device_id
-            )
+            button_watcher: Optional[
+                ButtonWatcher
+            ] = button_watchers_by_remote_id.value.get(remote.device_id)
 
             if (
                 not button_watcher

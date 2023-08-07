@@ -33,7 +33,7 @@ class Topology:
         caseta_bridge: Smartbridge,
         button_tracker: ButtonTracker,
         shutdown_latch_wrapper: ShutdownLatchWrapper,
-    ) -> Topology:
+    ):
         self._caseta_bridge: Smartbridge = caseta_bridge
         self._button_tracker: ButtonTracker = button_tracker
         self._shutdown_latch_wrapper: ShutdownLatchWrapper = shutdown_latch_wrapper
