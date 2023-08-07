@@ -125,6 +125,22 @@ class EventHandler:
             return
         await self._z2m_client.turn_off_group(z2m_group)
 
+    async def _handle_increase_button_event(
+        self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
+    ):
+        EventHandler._ensure_correct_button(ButtonId.INCREASE, event)
+        current_group_state = await self._group_state_manager.get_group_state(
+            z2m_group.friendly_name
+        )
+        if not current_group_state:
+            raise AssertionError("todo -- should this init an empty group? idk")
+        async with current_group_state.get() as locked_current_group_state:
+            # figure out the next brightness value
+            next_brightness_value: int
+            current_brightness = locked_current_group_state.value.brightness
+            if not current_brightness:
+                next_brightness_value = 255
+
     async def _handle_favorite_button_event(
         self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
     ):
@@ -191,3 +207,5 @@ class EventHandler:
             z2m_group.scenes[current_scene_index - 1],
             z2m_group.scenes[current_scene_index + 1],
         )
+
+    def get_next_brightness_value(current_brightness: int):

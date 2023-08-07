@@ -49,6 +49,39 @@ class OnOrOff(StrEnum):
         return cls[str_literal.upper()]
 
 
+class Brightness:
+    MINIMUM: Brightness
+    MAXIMUM: Brightness
+    MINIMUM_VALUE: int = 1
+    MAXIMUM_VALUE: int = 255
+    _STEP_SIZE = 16
+
+    def __init__(self, value: int):
+        if (
+            not isinstance(value, int)
+            or value < Brightness.MINIMUM_VALUE
+            or value > Brightness.MAXIMUM_VALUE
+        ):
+            raise AssertionError(f"{value} is not a valid brightness value")
+        self.value = value
+
+    def next_higher_value(self) -> Brightness:
+        next_higher_value: int = min(
+            self.value + Brightness._STEP_SIZE, Brightness.MAXIMUM_VALUE
+        )
+        return Brightness(next_higher_value)
+
+    def next_lower_value(self) -> Brightness:
+        next_lower_value: int = max(
+            self.value - Brightness._STEP_SIZE, Brightness.MINIMUM_VALUE
+        )
+        return Brightness(next_lower_value)
+
+
+Brightness.MINIMUM = Brightness(Brightness.MINIMUM_VALUE)
+Brightness.MAXIMUM = Brightness(Brightness.MAXIMUM_VALUE)
+
+
 @dataclass(frozen=True, kw_only=True)
 class GroupState:
     brightness: Optional[int]
