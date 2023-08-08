@@ -35,7 +35,9 @@ class ButtonHistory:
     async def increment(self, button_action: ButtonAction) -> None:
         async with self.button_state.get() as button_state:
             if not button_state.value.is_button_action_valid(button_action):
-                raise IllegalStateTransitionError()
+                raise IllegalStateTransitionError(
+                    f"current button state is {button_state.value}, but received a button action of {button_action}"
+                )
             if button_state.value == ButtonState.NOT_PRESSED:
                 self.tracking_started_at = datetime.now()
             button_state.value = button_state.value.next_state()
@@ -183,11 +185,10 @@ class ButtonTracker:
     async def _process_button_event(
         self, remote: PicoRemote, button_id: ButtonId, button_action: ButtonAction
     ):
+        remote_info_logging_str = f"remote: (name: {remote.name}, id: {remote.device_id}, button_id: {button_id})"
         LOGGER.info(
-            "got a button event: remote: (name: %s, id:  %s), button_id: %s, button_action: %s",
-            remote.name,
-            remote.device_id,
-            button_id,
+            "got a button event: %s, button_action: %s",
+            remote_info_logging_str,
             button_action,
         )
 
@@ -202,6 +203,14 @@ class ButtonTracker:
                 or button_watcher.button_history.is_finished
                 or button_watcher.button_history.is_timed_out
             ):
+                if button_action == ButtonAction.RELEASE:
+                    LOGGER.debug(
+                        "button event: %s, ButtonAction: %s, button action does not correspond "
+                        "to a button currently being tracked. ignoring it",
+                        remote_info_logging_str,
+                        button_action,
+                    )
+                    return
                 button_watcher = ButtonWatcher(
                     remote, button_id, self._caseta_event_handler
                 )

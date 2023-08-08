@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 import logging
-from typing import Optional
+from typing import Callable, Optional
 
 from dynaconf import Dynaconf
 from caseta_to_mqtt.caseta.model import ButtonId, PicoRemote
 
 from caseta_to_mqtt.z2m.client import Zigbee2mqttClient
 from caseta_to_mqtt.z2m.model import (
+    Brightness,
     GroupState,
     OnOrOff,
     Zigbee2mqttGroup,
@@ -93,6 +94,8 @@ class EventHandler:
                 await self._handle_power_off_event(z2m_group, event)
             case ButtonId.FAVORITE:
                 await self._handle_favorite_button_event(z2m_group, event)
+            case ButtonId.INCREASE | ButtonId.DECREASE:
+                await self._handle_brightness_change_button_event(z2m_group, event)
             case _:
                 LOGGER.info(
                     "%s %s; we haven't implemented handling for other buttons yet",
@@ -125,21 +128,54 @@ class EventHandler:
             return
         await self._z2m_client.turn_off_group(z2m_group)
 
-    async def _handle_increase_button_event(
+    async def _handle_brightness_change_button_event(
         self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
     ):
-        EventHandler._ensure_correct_button(ButtonId.INCREASE, event)
         current_group_state = await self._group_state_manager.get_group_state(
             z2m_group.friendly_name
         )
         if not current_group_state:
             raise AssertionError("todo -- should this init an empty group? idk")
         async with current_group_state.get() as locked_current_group_state:
-            # figure out the next brightness value
-            next_brightness_value: int
+            now = datetime.now()
+
+            # turn on the group if it isn't on already
+            if (
+                not locked_current_group_state.value
+                or locked_current_group_state.value.state != OnOrOff.ON
+            ):
+                await self._z2m_client.turn_on_group(z2m_group)
+                return
             current_brightness = locked_current_group_state.value.brightness
+            brightness_range_end: Brightness
+            next_brightness_value_fn: Callable[[Brightness], Brightness]
+
+            # are we increasing brightness or decreasing brightness?
+            if event.button_id == ButtonId.INCREASE:
+                brightness_range_end = Brightness.MAXIMUM
+                next_brightness_value_fn = Brightness.next_higher_value
+                pass
+            else:
+                brightness_range_end = Brightness.MINIMUM
+                next_brightness_value_fn = Brightness.next_lower_value
+
+            # figure out the next brightness value
+            next_brightness_value: Brightness
             if not current_brightness:
-                next_brightness_value = 255
+                next_brightness_value = brightness_range_end
+            else:
+                next_brightness_value = next_brightness_value_fn(current_brightness)
+
+            if event.button_event == ButtonEvent.DOUBLE_PRESS_FINISHED:
+                next_brightness_value = next_brightness_value_fn(next_brightness_value)
+
+            await self._z2m_client.set_brightness(z2m_group, next_brightness_value)
+            locked_current_group_state.value = GroupState(
+                brightness=next_brightness_value,
+                state=OnOrOff.ON,
+                scene=locked_current_group_state.value.scene,
+                updated_at=now,
+            )
 
     async def _handle_favorite_button_event(
         self, z2m_group: Zigbee2mqttGroup, event: CasetaEvent
@@ -207,5 +243,3 @@ class EventHandler:
             z2m_group.scenes[current_scene_index - 1],
             z2m_group.scenes[current_scene_index + 1],
         )
-
-    def get_next_brightness_value(current_brightness: int):

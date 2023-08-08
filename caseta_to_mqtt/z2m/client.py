@@ -6,6 +6,7 @@ import aiomqtt
 
 from caseta_to_mqtt.asynchronous.shutdown_latch import ShutdownLatchWrapper
 from caseta_to_mqtt.z2m.model import (
+    Brightness,
     GroupState,
     OnOrOff,
     Zigbee2mqttGroup,
@@ -62,8 +63,8 @@ class Zigbee2mqttClient:
         group_name = Zigbee2mqttGroup.friendly_name_from_topic_name(message.topic.value)
 
         now = datetime.now()
-        brightness_maybe: Optional[int] = (
-            int(deserialized_group_response["brightness"])
+        brightness_maybe: Optional[Brightness] = (
+            Brightness(int(deserialized_group_response["brightness"]))
             if "brightness" in deserialized_group_response
             else None
         )
@@ -124,4 +125,9 @@ class Zigbee2mqttClient:
         scene_recall_payload = json.dumps({"scene_recall": scene.id})
         await self._mqtt_client.publish(
             f"{group.topic}/set", payload=scene_recall_payload
+        )
+
+    async def set_brightness(self, group: Zigbee2mqttGroup, brightness: Brightness):
+        await self._mqtt_client.publish(
+            f"{group.topic}/set", payload=json.dumps(brightness.as_z2m_message())
         )

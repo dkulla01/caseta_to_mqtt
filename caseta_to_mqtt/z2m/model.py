@@ -52,39 +52,42 @@ class OnOrOff(StrEnum):
 class Brightness:
     MINIMUM: Brightness
     MAXIMUM: Brightness
-    MINIMUM_VALUE: int = 1
-    MAXIMUM_VALUE: int = 255
+    _MINIMUM_VALUE: int = 1
+    _MAXIMUM_VALUE: int = 254
     _STEP_SIZE = 16
 
     def __init__(self, value: int):
         if (
             not isinstance(value, int)
-            or value < Brightness.MINIMUM_VALUE
-            or value > Brightness.MAXIMUM_VALUE
+            or value < Brightness._MINIMUM_VALUE
+            or value > Brightness._MAXIMUM_VALUE
         ):
             raise AssertionError(f"{value} is not a valid brightness value")
-        self.value = value
+        self._value = value
 
     def next_higher_value(self) -> Brightness:
         next_higher_value: int = min(
-            self.value + Brightness._STEP_SIZE, Brightness.MAXIMUM_VALUE
+            self._value + Brightness._STEP_SIZE, Brightness._MAXIMUM_VALUE
         )
         return Brightness(next_higher_value)
 
     def next_lower_value(self) -> Brightness:
         next_lower_value: int = max(
-            self.value - Brightness._STEP_SIZE, Brightness.MINIMUM_VALUE
+            self._value - Brightness._STEP_SIZE, Brightness._MINIMUM_VALUE
         )
         return Brightness(next_lower_value)
 
+    def as_z2m_message(self) -> dict[str, int]:
+        return {"brightness": self._value}
 
-Brightness.MINIMUM = Brightness(Brightness.MINIMUM_VALUE)
-Brightness.MAXIMUM = Brightness(Brightness.MAXIMUM_VALUE)
+
+Brightness.MINIMUM = Brightness(Brightness._MINIMUM_VALUE)
+Brightness.MAXIMUM = Brightness(Brightness._MAXIMUM_VALUE)
 
 
 @dataclass(frozen=True, kw_only=True)
 class GroupState:
-    brightness: Optional[int]
+    brightness: Optional[Brightness]
     state: OnOrOff
     scene: Optional[Zigbee2mqttScene]
     updated_at: datetime
