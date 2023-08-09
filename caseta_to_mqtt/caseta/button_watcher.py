@@ -89,7 +89,7 @@ class ButtonWatcher:
                 return
             elif current_state == ButtonState.FIRST_PRESS_AWAITING_RELEASE:
                 LOGGER.debug(
-                    f"{button_log_prefix}: a long press has started but not finished"
+                    "%s: a long press has started but not finished", button_log_prefix
                 )
                 await self._event_handler.handle_event(
                     CasetaEvent(
@@ -154,7 +154,8 @@ class ButtonWatcher:
                     )
         button_history.is_finished = True
         LOGGER.debug(
-            f"{button_log_prefix}: the button tracking window ended without the button reaching a terminal state"
+            "%s: the button tracking window ended without the button reaching a terminal state",
+            button_log_prefix,
         )
 
     async def increment_history(self, button_action: ButtonAction):
