@@ -50,7 +50,7 @@ class Zigbee2mqttClient:
                         await self._handle_single_group_response(message)
 
     async def _handle_single_group_response(self, message: aiomqtt.Message):
-        LOGGER.debug(f"got message for topic: {message.topic}")
+        LOGGER.debug("got message for topic: %s", message.topic)
 
         payload: str | bytearray | bytes
         if isinstance(message.payload, (str, bytearray, bytes)):
@@ -90,7 +90,7 @@ class Zigbee2mqttClient:
                 f"expected deserializable json, but got {type(message.payload)}"
             )
         groups_response = json.loads(payload)  # if message.payload else []
-        LOGGER.debug(f"got message for topic: {message.topic}")
+        LOGGER.debug("got message for topic: %s", message.topic)
         all_groups: set[Zigbee2mqttGroup] = set()
         for group in groups_response:
             scenes = [
