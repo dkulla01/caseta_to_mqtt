@@ -10,11 +10,13 @@ packages = [{include = "caseta_to_mqtt"}]
 python = "^3.11"
 pylutron-caseta = {extras = ["cli"], version = "^0.18.1"}
 aiomqtt = "^1.0.0"
+dynaconf = "^3.1.12"
 
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.3.0"
 flake8 = "^6.0.0"
+mypy = "^1.4.1"
 
 [build-system]
 requires = ["poetry-core"]

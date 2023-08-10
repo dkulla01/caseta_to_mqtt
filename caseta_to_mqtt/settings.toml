@@ -1,0 +1,3 @@
+[default]
+caseta_bridge_hostname = "caseta.run"
+zigbee2mqtt_group_scene_cache_ttl_seconds = 60
